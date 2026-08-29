@@ -47,6 +47,10 @@
 				"Linux",
 				"Android"
 			]
+		},
+		{
+			"Name": "MetaHumanCharacter",
+			"Enabled": true
 		}
 	]
 }
