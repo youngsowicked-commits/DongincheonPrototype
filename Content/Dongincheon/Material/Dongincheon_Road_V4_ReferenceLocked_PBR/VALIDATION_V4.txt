@@ -1,0 +1,21 @@
+Dongincheon Road V4 Validation
+
+REFERENCE LOCK:
+- Interlocking diagonal charcoal bands / angular meander motif
+- Large warm-light-gray rectangular paving fields
+- Muted dusty-pink accent pavers, sparse rather than dominant
+- Matte, aged concrete/stone character; no baked directional shadow
+
+SEAM TEST:
+- BaseColor: {'LR_mean': 0.0, 'LR_max': 0, 'TB_mean': 0.0, 'TB_max': 0}
+- Normal: {'LR_mean': 0.0, 'LR_max': 0, 'TB_mean': 0.0, 'TB_max': 0}
+- ORM: {'LR_mean': 0.0, 'LR_max': 0, 'TB_mean': 0.0, 'TB_max': 0}
+- Height: {'LR_mean': 0.0, 'LR_max': 0, 'TB_mean': 0.0, 'TB_max': 0}
+
+NON-MIRROR TEST:
+- LR mirror similarity: 0.486809
+- TB mirror similarity: 0.433862
+- Construction method: periodic reconstruction, not mirror tiling.
+
+VISUAL TEST:
+- See PREVIEW_4x4_V4.jpg. Pattern boundaries should not form straight seam lines.
