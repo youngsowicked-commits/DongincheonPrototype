@@ -16,6 +16,48 @@ UInteractionComponent::UInteractionComponent()
 	// ...
 }
 
+bool UInteractionComponent::Interact()
+{
+	return TryInteract(CurrentInteractable);
+}
+
+FText UInteractionComponent::GetCurrentInteractionText() const
+{
+	if (!IsValid(CurrentInteractable))
+	{
+		return FText::GetEmpty();
+	}
+	
+	return IInteractable::Execute_GetInteractionText(CurrentInteractable);
+}
+
+void UInteractionComponent::BeginPlay()
+{
+	Super::BeginPlay();
+	
+	UpdateCurrentInteractable();
+	
+	GetWorld()->GetTimerManager().SetTimer(
+	InteractionUpdateTimerHandle,
+	this,
+	&UInteractionComponent::UpdateCurrentInteractable,
+	0.1f,
+	true
+	);
+}
+
+void UInteractionComponent::UpdateCurrentInteractable()
+{
+	AActor* NewInteractable = FindBestInteractable();
+	
+	if (CurrentInteractable != NewInteractable)
+	{
+		CurrentInteractable = NewInteractable;
+		
+		OnInteractableChanged.Broadcast(CurrentInteractable.Get());
+	}
+}
+
 bool UInteractionComponent::TryInteract(AActor* Target)
 {
 	if (!IsValid(Target))
