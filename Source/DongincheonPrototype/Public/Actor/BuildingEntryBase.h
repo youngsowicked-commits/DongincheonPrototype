@@ -11,6 +11,8 @@ class UBoxComponent;
 class UPrimitiveComponent;
 class USceneComponent;
 class ACharacter;
+class UCameraComponent;
+class UPushDoorComponent;
 
 UCLASS()
 class DONGINCHEONPROTOTYPE_API ABuildingEntryBase : public AActor
@@ -29,6 +31,8 @@ protected:
 	void LockPlayerInput();
 	
 	void AlignPlayerToEntryPoint();
+	
+	void BlendToEntryCamera();
 	
 	UFUNCTION(BlueprintCallable, Category = "Entry")
 	void MovePlayerToInsidePoint();
@@ -53,6 +57,15 @@ protected:
 	const FHitResult& SweepResult
 	);
 	
+	UFUNCTION()
+	void HandleExitTiggerBeginOverlap(
+		UPrimitiveComponent* OverlappedComponent, 
+		AActor* OtherActor, 
+		UPrimitiveComponent* OtherComp,
+		int32 OtherBodyIndex, 
+		bool bFromSweep, 
+		const FHitResult& SweepResult);
+	
 	UPROPERTY(Transient)
 	TObjectPtr<ACharacter> ActiveCharacter = nullptr;
 	
@@ -63,11 +76,29 @@ protected:
 	TObjectPtr<UBoxComponent> EntryTrigger;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Entry")
+	TObjectPtr<UBoxComponent> ExitTrigger;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Entry")
 	TObjectPtr<USceneComponent> EntryPoint;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Entry")
 	TObjectPtr<USceneComponent> InsidePoint;
 	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Entry")
+	TObjectPtr<UCameraComponent> EntryCamera;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Door")
+	TObjectPtr<USceneComponent> DoorPivot;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Door")
+	TObjectPtr<UBoxComponent> PushTrigger;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Door")
+	TObjectPtr<UPushDoorComponent> PushDoorComponent;
+	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Entry")
 	bool bEntryInProgress = false;
+	
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Entry")
+	bool bPlayerInside = false;
 };

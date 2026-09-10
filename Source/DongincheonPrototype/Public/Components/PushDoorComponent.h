@@ -3,58 +3,62 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
-#include "PushDoorBase.generated.h"
+#include "Components/ActorComponent.h"
+#include "PushDoorComponent.generated.h"
 
+
+class USceneComponent;
 class UBoxComponent;
 class UPrimitiveComponent;
+class ACharacter;
 
-UCLASS()
-class DONGINCHEONPROTOTYPE_API APushDoorBase : public AActor
+UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
+class DONGINCHEONPROTOTYPE_API UPushDoorComponent : public UActorComponent
 {
 	GENERATED_BODY()
-	
+
 public:	
-	// Sets default values for this actor's properties
-	APushDoorBase();
+	// Sets default values for this component's properties
+	UPushDoorComponent();
 
 protected:
-	// Called when the game starts or when spawned
+	// Called when the game starts
 	virtual void BeginPlay() override;
-	
 
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Door")
-	TObjectPtr<USceneComponent> SceneRoot;
+public:	
+	// Called every frame
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Door")
-	TObjectPtr<USceneComponent> DoorPivot;
+	void InitializeDoor(USceneComponent* InDoorPivot, UBoxComponent* InPushTrigger);
 	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Door")
-	TObjectPtr<UBoxComponent> PushTrigger;
+protected:
+	UPROPERTY(Transient)
+	TObjectPtr<USceneComponent> DoorPivot = nullptr;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<UBoxComponent> PushTrigger = nullptr;
 	
 	UPROPERTY(Transient)
 	TObjectPtr<ACharacter> PushingCharacter = nullptr;
 	
+	float CurrentDoorAngle = 0.0f;
+	float CurrentAngularVelocity = 0.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Door")
 	float MaxOpenAngle = 135.0f;
-	
-	float CurrentDoorAngle = 0.0f;
-	
-	float CurrentAngularVelocity = 0.0f;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Door")
 	float PushAngularAcceleration = 500.0f;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Door")
 	float AngularDamping = 4.0f;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Door")
 	float MaxAngularSpeed = 240.0f;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Door")
 	float CloseSpringStrength = 8.0f;
-	
+
 	UFUNCTION()
 	void HandlePushTriggerBeginOverlap(
 		UPrimitiveComponent* OverlappedComponent,
@@ -62,17 +66,14 @@ protected:
 		UPrimitiveComponent* OtherComp,
 		int32 OtherBodyIndex,
 		bool bFromSweep,
-		const FHitResult& SweepResult);
-	
+		const FHitResult& SweepResult
+	);
+
 	UFUNCTION()
 	void HandlePushTriggerEndOverlap(
 		UPrimitiveComponent* OverlappedComponent,
 		AActor* OtherActor,
 		UPrimitiveComponent* OtherComp,
-		int32 OtherBodyIndex);
-	
-public:
-	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
+		int32 OtherBodyIndex
+	);
 };

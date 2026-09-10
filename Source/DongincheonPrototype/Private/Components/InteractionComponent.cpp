@@ -1,9 +1,9 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "InteractionComponent.h"
+#include "Components/InteractionComponent.h"
 
-#include "Interactable.h"
+#include "Interface/Interactable.h"
 #include "Kismet/GameplayStatics.h"
 
 // Sets default values for this component's properties

@@ -2,6 +2,7 @@
 
 
 #include "Actor/PushDoorBase.h"
+#include "Engine/Engine.h"
 
 #include "Components/BoxComponent.h"
 #include "GameFramework/Character.h"
@@ -75,8 +76,12 @@ void APushDoorBase::HandlePushTriggerEndOverlap(UPrimitiveComponent* OverlappedC
 		return;
 	}
 	
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1,2.0f,FColor::Red,TEXT("Door End Overlap"));
+	}
+	
 	PushingCharacter = nullptr;
-	SetActorTickEnabled(false);
 }
 
 // Called every frame
@@ -84,37 +89,89 @@ void APushDoorBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	
-	if (!IsValid(PushingCharacter))
+	//플레이어가 밀고 있을때만 회전 가속도 증가
+	if (IsValid(PushingCharacter))
 	{
-		return;
+		FVector ToPlayer = PushingCharacter->GetActorLocation() - DoorPivot->GetComponentLocation();
+		
+		FVector MoveDirection = PushingCharacter->GetVelocity();
+		
+		ToPlayer.Z = 0.0f;
+		MoveDirection.Z = 0.0f;
+		
+		if (!ToPlayer.IsNearlyZero() && !MoveDirection.IsNearlyZero())
+		{
+			ToPlayer.Normalize();
+			MoveDirection.Normalize();
+			
+			const float PushTorque = FVector::CrossProduct(ToPlayer, MoveDirection).Z;
+			
+			CurrentAngularVelocity += PushTorque * PushAngularAcceleration * DeltaTime;
+		}
+	}
+	else
+	{
+		const float SpringDelta =
+	   (-CurrentDoorAngle * CloseSpringStrength) * DeltaTime;
+
+		CurrentAngularVelocity += SpringDelta;
+
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(
+				2002,
+				0.0f,
+				FColor::Green,
+				FString::Printf(
+					TEXT("Angle %.1f | Spring %.2f | Vel %.2f"),
+					CurrentDoorAngle,
+					SpringDelta,
+					CurrentAngularVelocity
+				)
+			);
+		}
 	}
 	
-	FVector ToPlayer = PushingCharacter->GetActorLocation() - DoorPivot->GetComponentLocation();
+	//최대 회전속도 제한
+	CurrentAngularVelocity = FMath::Clamp(CurrentAngularVelocity, -MaxAngularSpeed, MaxAngularSpeed);
 	
-	FVector MoveDirection = PushingCharacter->GetVelocity();
+	//마찰 ,감쇠
+	CurrentAngularVelocity = FMath::FInterpTo(CurrentAngularVelocity, 0.0f, DeltaTime, AngularDamping);
 	
-	ToPlayer.Z = 0.0f;
-	MoveDirection.Z = 0.0f;
+	//속도로 실제 각도 갱신
+	CurrentDoorAngle += CurrentAngularVelocity * DeltaTime;
 	
-	if (ToPlayer.IsNearlyZero() || MoveDirection.IsNearlyZero())
+	//최대 열림 각도 처리
+	if (CurrentDoorAngle >= MaxOpenAngle)
 	{
-		return;
+		CurrentDoorAngle = MaxOpenAngle;
+		
+		if ( CurrentAngularVelocity > 0.0f)
+		{
+			CurrentAngularVelocity = 0.0f;
+		}
+	}
+	else if (CurrentDoorAngle <= -MaxOpenAngle)
+	{
+		CurrentDoorAngle = -MaxOpenAngle;
+		
+		if (CurrentAngularVelocity < 0.0f)
+		{
+			CurrentAngularVelocity = 0.0f;
+		}
 	}
 	
-	ToPlayer.Normalize();
-	MoveDirection.Normalize();
+	DoorPivot->SetRelativeRotation(FRotator(0.0f, CurrentDoorAngle, 0));
 	
-	const float PushTorque = FVector::CrossProduct(ToPlayer,MoveDirection).Z;
-	
-	if (FMath::Abs(PushTorque) < 0.05f)
+	//플레이어가 떠났고 문도 사실상 멈췄으면 Tick Off
+	if (!IsValid(PushingCharacter) && FMath::Abs(CurrentAngularVelocity) < 1.0f && FMath::Abs(CurrentDoorAngle) < 0.5f)
 	{
-		return;
+		CurrentDoorAngle = 0.0f;
+		CurrentAngularVelocity = 0.0f;
+		
+		DoorPivot->SetRelativeRotation(FRotator::ZeroRotator);
+		
+		SetActorTickEnabled(false);
 	}
-	
-	CurrentDoorAngle += PushTorque * PushOpenSpeed * DeltaTime;
-	
-	CurrentDoorAngle = FMath::Clamp(CurrentDoorAngle,-MaxOpenAngle,MaxOpenAngle);
-	
-	DoorPivot->SetRelativeRotation(FRotator(0.0f,CurrentDoorAngle,0.0f));
 }
 
