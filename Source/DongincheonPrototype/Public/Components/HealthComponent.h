@@ -6,7 +6,14 @@
 #include "Components/ActorComponent.h"
 #include "HealthComponent.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnHealthChanged,float,OldHealth,float,NewHealth,float,MaxHealth);
+class AActor;
+class AController;
+class UDamageType;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnHealthChangedSignature,float,OldHealth,float,NewHealth,float,MaxHealth);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnMaxHealthChangedSignature,float,OldMaxHealth,float,NewMaxHealth,float,CurrentHealth);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHealthDeathSignature, AActor*, DamageCauser);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDamagedSignature,float,DamageAmount,AActor*,DamageCauser);
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 
@@ -18,19 +25,60 @@ class DONGINCHEONPROTOTYPE_API UHealthComponent : public UActorComponent
 public:	
 	// Sets default values for this component's properties
 	UHealthComponent();
+	
+	UFUNCTION(BlueprintPure, Category = "Health")
+	float GetCurrentHealth() const;
+	
+	UFUNCTION(BlueprintPure, Category = "Health")
+	float GetMaxHealth() const;
+	
+	UFUNCTION(BlueprintPure, Category = "Health")
+	float GetHealthNormalized() const;
+	
+	UFUNCTION(BlueprintPure,Category = "Health")
+	bool IsDead() const; 
+	
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	void Heal(float HealAmount);
+	
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	void SetMaxHealth(float NewMaxHealth, bool bAdjustCurrentHealth = true);
+	
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	void ResetHealth();
 
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 
 public:	
-	// Called every frame
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
-protected:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Health")
+	UPROPERTY(BlueprintAssignable, Category = "Health")
+	FOnHealthChangedSignature OnHealthChanged;
+	
+	UPROPERTY(BlueprintAssignable, Category = "Health")
+	FOnMaxHealthChangedSignature OnMaxHealthChanged;
+	
+	UPROPERTY(BlueprintAssignable, Category = "Health")
+	FOnHealthDeathSignature OnDeath;
+	
+	UPROPERTY(BlueprintAssignable, Category = "Health")
+	FOnDamagedSignature OnDamaged;
+	
+private:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Health", meta = (ClampMin = "1.0" , UIMin = "1.0" , AllowPrivateAccess = "true"))
 	float MaxHealth = 100.0f;
 	
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Transient, Category = "Health", meta = (AllowPrivateAccess = "true"))
 	float CurrentHealth = 0.0f;
 	
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Transient, Category = "Health", meta = (AllowPrivateAccess = "true"))
+	bool bIsDead = false;
+	
+	UFUNCTION()
+	void HandleTakeAnyDamage(
+		AActor* DamageActor,
+		float Damage,
+		const UDamageType* DamageType,
+		AController* InstigatedBy,
+		AActor* DamageCauser);
 };
