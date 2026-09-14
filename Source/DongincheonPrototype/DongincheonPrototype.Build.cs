@@ -8,12 +8,13 @@ public class DongincheonPrototype : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "StateTreeModule" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] 
 		{
 			"AIModule",
-			"GameplayStateTreeModule"
+			"GameplayStateTreeModule",
+			"GameplayTags"
 		});
 
 		// Uncomment if you are using Slate UI
