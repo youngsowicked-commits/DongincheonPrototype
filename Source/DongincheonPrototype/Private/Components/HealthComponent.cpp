@@ -16,10 +16,7 @@ UHealthComponent::UHealthComponent()
 	CurrentHealth = MaxHealth;
 	bIsDead = false;
 	
-	if (AActor* Owner = GetOwner())
-	{
-		Owner->OnTakeAnyDamage.AddDynamic(this, &UHealthComponent::HandleTakeAnyDamage);
-	}
+
 }
 
 float UHealthComponent::GetCurrentHealth() const
@@ -110,6 +107,10 @@ void UHealthComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	if (AActor* Owner = GetOwner())
+	{
+		Owner->OnTakeAnyDamage.AddUniqueDynamic(this, &UHealthComponent::HandleTakeAnyDamage);
+	}
 }
 
 void UHealthComponent::HandleTakeAnyDamage(

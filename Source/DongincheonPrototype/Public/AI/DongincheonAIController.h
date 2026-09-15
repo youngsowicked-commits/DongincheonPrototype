@@ -21,6 +21,9 @@ class DONGINCHEONPROTOTYPE_API ADongincheonAIController : public AAIController
 public:
 	ADongincheonAIController();
 	
+	void SendHitReactEvent();
+	void SendDeadEvent();
+	
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
 	TObjectPtr<UStateTreeAIComponent> StateTreeComponent;
