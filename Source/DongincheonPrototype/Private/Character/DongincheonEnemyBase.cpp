@@ -225,7 +225,7 @@ bool ADongincheonEnemyBase::StartHitReact()
 	}
 	
 	//StateTree의 기존 MoveTo / Path Following을 즉시 중단.
-	if (AAIController* AIController = Cast<AAIController>(GetController()))
+	/*if (AAIController* AIController = Cast<AAIController>(GetController()))
 	{
 		AIController->StopMovement();
 	}
@@ -235,6 +235,7 @@ bool ADongincheonEnemyBase::StartHitReact()
 	{
 		Movement->StopMovementImmediately();
 	}
+	*/
 	
 	const float MontageResult = AnimInstance->Montage_Play(
 	HitReactMontage, EnemyDefinition->HitReact.PlayRate, EMontagePlayReturnType::MontageLength, 0.0f,
@@ -398,8 +399,16 @@ void ADongincheonEnemyBase::HandleHealthDamaged(float DamageAmount, AActor* Dama
 {
 	if (ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController()))
 	{
+		// Damage가 들어온 순간 기존 AI Path/Chase 이동을 먼저 제거한다.
+		// 이후 UCombatComponent가 Knockback Impulse를 적용할 수 있도록
+		// HitReact 진입 전에만 수행한다.
 		UE_LOG(LogTemp, Warning, TEXT("01B: HitReact AIController Cast SUCCESS"));
-
+		AIController->StopMovement();
+		
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+		{
+			Movement->StopMovementImmediately();
+		}
 		
 		AIController->SendHitReactEvent();
 	}

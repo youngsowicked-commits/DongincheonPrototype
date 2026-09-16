@@ -3,7 +3,6 @@
 
 #include "Components/HealthComponent.h"
 
-#include "SAnimTimingPanelShared.h"
 #include "GameFramework/Actor.h"
 
 // Sets default values for this component's properties
@@ -113,12 +112,8 @@ void UHealthComponent::BeginPlay()
 	}
 }
 
-void UHealthComponent::HandleTakeAnyDamage(
-	AActor* DamageActor, 
-	float Damage, 
-	const UDamageType* DamageType,
-	AController* InstigatedBy, 
-	AActor* DamageCauser)
+void UHealthComponent::HandleTakeAnyDamage(AActor* DamageActor, float Damage, const UDamageType* DamageType,
+	AController* InstigatedBy, AActor* DamageCauser)
 {
 	if (DamageActor != GetOwner())
 	{
@@ -133,6 +128,9 @@ void UHealthComponent::HandleTakeAnyDamage(
 	const float OldHealth = CurrentHealth;
 	
 	CurrentHealth = FMath::Clamp(CurrentHealth - Damage, 0.0f, MaxHealth);
+	
+	UE_LOG(LogTemp, Warning, TEXT("[NativeHealth] Owner=%s Damage=%.1f HP=%.1f/%.1f"),
+	*GetNameSafe(GetOwner()),Damage,CurrentHealth,MaxHealth);
 	
 	if (FMath::IsNearlyEqual(OldHealth, CurrentHealth))
 	{
