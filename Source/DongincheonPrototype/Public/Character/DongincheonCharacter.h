@@ -13,7 +13,6 @@ class UCombatComponent;
 class UInteractionComponent;
 class UInputAction;
 class UAnimMontage;
-class UAnimInstance;
 class UCameraShakeBase;
 
 struct FInputActionValue;
@@ -42,7 +41,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Player|Movement")
 	bool IsMovementInputAllowed() const;
 	
-	UFUNCTION(BlueprintCallable, Category = "Player|Death")
 	void FinalizePlayerDeath();
 
 protected:

@@ -74,6 +74,11 @@ void ADongincheonCharacter::HandleLockOnStarted(const FInputActionValue& Value)
 {
 	(void)Value;
 	
+	if (!IsValid(HealthComponent) || HealthComponent->IsDead() || bPlayerDeathStarted)
+	{
+		return;
+	}
+	
 	if (IsValid(TargetingComponent))
 	{
 		TargetingComponent->TryLockOn();
@@ -223,11 +228,6 @@ void ADongincheonCharacter::HandleAttackMontageEnded(UAnimMontage* Montage, bool
 		CombatComponent->EndAttack();
 	}
 	
-	if (IsValid(CombatComponent))
-	{
-		CombatComponent->EndAttack();
-	}
-	
 	if (bInterrupted || bPlayerHitReacting || bPlayerDeathStarted || (IsValid(HealthComponent) && HealthComponent->IsDead()))
 	{
 		bPlayerAttackActive = false;
@@ -341,6 +341,11 @@ void ADongincheonCharacter::StartPlayerHitReact()
 	{
 		UAnimMontage* PreviousHitReact = ActiveHitReactMontage;
 		
+		//이전 HitReact 재생의 EndDelegate가 새 HitReact 상태를 종료시키지 못하도록 먼저 해제
+		FOnMontageEnded EmptyEndDelegate;
+		AnimInstance->Montage_SetEndDelegate(EmptyEndDelegate,PreviousHitReact);
+		
+		
 		ActiveHitReactMontage = nullptr;
 		
 		AnimInstance->Montage_Stop(0.05f, PreviousHitReact);
@@ -386,8 +391,23 @@ void ADongincheonCharacter::HandleHitReactMontageEnded(UAnimMontage* Montage, bo
 		return;
 	}
 	
-	ActiveHitReactMontage = nullptr;
+	if (bInterrupted)
+	{
+		// 같은 HitReact Montage의 새 재생이 이미 진행 중이라면
+		// 이전 재생의 종료 Callback이므로 현재 상태를 종료하지 않는다.
+		if (IsValid(GetMesh()))
+		{
+			if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+			{
+				if (AnimInstance->Montage_IsPlaying(ActiveHitReactMontage))
+				{
+					return;
+				}
+			}
+		}
+	}
 	
+	ActiveHitReactMontage = nullptr;
 	FinishPlayerHitReact();
 }
 
@@ -418,6 +438,11 @@ void ADongincheonCharacter::StartPlayerDeath()
 	bPlayerHitReacting = false;
 	
 	CancelPlayerAttack(0.0f);
+	
+	if (IsValid(TargetingComponent))
+	{
+		TargetingComponent->ClearLockOn();
+	}
 	
 	if (!IsValid(GetMesh()))
 	{

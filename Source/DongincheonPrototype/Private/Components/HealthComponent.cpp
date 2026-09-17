@@ -14,8 +14,20 @@ UHealthComponent::UHealthComponent()
 
 	CurrentHealth = MaxHealth;
 	bIsDead = false;
-	
+	bDamageEnalbe = true;
+}
 
+void UHealthComponent::SetDamageEnabled(bool bEnabled)
+{
+	bDamageEnalbe = bEnabled;
+	
+	UE_LOG(LogTemp,Log,TEXT("[NativeHealth] Damage %s | Owner=%s"),bDamageEnalbe ? TEXT("ENABLED") : TEXT ("DISABLED"),
+		*GetNameSafe(GetOwner()));
+}
+
+bool UHealthComponent::IsDamageEnabled() const
+{
+	return bDamageEnalbe;
 }
 
 float UHealthComponent::GetCurrentHealth() const
@@ -105,7 +117,12 @@ void UHealthComponent::ResetHealth()
 void UHealthComponent::BeginPlay()
 {
 	Super::BeginPlay();
-
+	
+	MaxHealth = FMath::Max(MaxHealth, 1.0f);
+	CurrentHealth = MaxHealth;
+	bIsDead = false;
+	bDamageEnalbe = true;
+	
 	if (AActor* Owner = GetOwner())
 	{
 		Owner->OnTakeAnyDamage.AddUniqueDynamic(this, &UHealthComponent::HandleTakeAnyDamage);
@@ -116,6 +133,11 @@ void UHealthComponent::HandleTakeAnyDamage(AActor* DamageActor, float Damage, co
 	AController* InstigatedBy, AActor* DamageCauser)
 {
 	if (DamageActor != GetOwner())
+	{
+		return;
+	}
+	
+	if (!bDamageEnalbe)
 	{
 		return;
 	}

@@ -38,6 +38,14 @@ void UTargetingComponent::TryLockOn()
 		return;
 	}
 	
+	UHealthComponent* OwnerHealth = OwnerCharacter->FindComponentByClass<UHealthComponent>();
+	
+	if (!IsValid(OwnerHealth) || OwnerHealth->IsDead())
+	{
+		ClearLockOn();
+		return;
+	}
+	
 	AActor* BestTarget = FindBestLockOnTarget();
 	
 	if (!IsValid(BestTarget))
@@ -187,6 +195,14 @@ void UTargetingComponent::UpdateLockOn(float DeltaTime)
 		return;
 	}
 	
+	UHealthComponent* OwnerHealth = OwnerCharacter->FindComponentByClass<UHealthComponent>();
+	
+	if (!IsValid(OwnerHealth) || OwnerHealth->IsDead())
+	{
+		ClearLockOn();
+		return;
+	}
+	
 	AActor* Target = CurrentTarget.Get();
 	
 	if (!IsValidLockOnTarget(Target))
@@ -202,6 +218,14 @@ void UTargetingComponent::UpdateLockOn(float DeltaTime)
 		ClearLockOn();
 		return;
 	}
+	
+	UCharacterMovementComponent* Movement = OwnerCharacter->GetCharacterMovement();
+	
+	if (!IsValid(Movement) || Movement->MovementMode == MOVE_None)
+	{
+		return;
+	}
+	
 	
 	const FVector Direction = Target->GetActorLocation() - OwnerCharacter->GetActorLocation();
 	

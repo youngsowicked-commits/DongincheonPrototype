@@ -12,6 +12,18 @@
 /**
  * 
  */
+
+USTRUCT(BlueprintType)
+struct DONGINCHEONPROTOTYPE_API FDIAttackPattern
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack Pattern")
+	TArray<int32> AttackIndices;
+	
+	UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Attack Pattern", meta = (ClampMin = "0.0"))
+	float Weight = 1.0f;
+};
 UCLASS(BlueprintType)
 class DONGINCHEONPROTOTYPE_API UDIEnemyDefinition : public UDataAsset
 {
@@ -20,6 +32,9 @@ class DONGINCHEONPROTOTYPE_API UDIEnemyDefinition : public UDataAsset
 public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Attack")
 	TArray<FAttackConfig> Attacks;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack")
+	TArray<FDIAttackPattern> AttackPatterns;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Hit React")
 	FHitReactConfig HitReact;

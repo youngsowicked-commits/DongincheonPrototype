@@ -2,20 +2,97 @@
 
 #include "Character/DongincheonEnemyBase.h"
 #include "Components/HealthComponent.h"
-
+#include "AI/DongincheonAIController.h"
+#include "Components/BoxComponent.h"
 #include "Engine/TargetPoint.h"
 #include "Engine/World.h"
+#include "GameFramework/Character.h"
+#include "Kismet/GameplayStatics.h"
+#include "UObject/FastReferenceCollector.h"
+#include "WorldPartition/ContentBundle/ContentBundleLog.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogDIBattleEncounter, Log, All);
 
 ADIBattleEncounter::ADIBattleEncounter()
 {
 	PrimaryActorTick.bCanEverTick = false;
+	
+	BattleTrigger = CreateDefaultSubobject<UBoxComponent>(TEXT("BattleTrigger"));
+	
+	SetRootComponent(BattleTrigger);
+	
+	BattleTrigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	
+	BattleTrigger->SetCollisionResponseToAllChannels(ECR_Ignore);
+	BattleTrigger->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	
+	BattleTrigger->SetGenerateOverlapEvents(true);
 }
 
 void ADIBattleEncounter::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	BattleTrigger->OnComponentBeginOverlap.AddUniqueDynamic(this,&ADIBattleEncounter::HandleTriggerBeginOverlap);
+	
+	//게임 시작시 전투 Blocker 비활성화
+	SetBattleBlockerEnabled(false);
+}
+
+void ADIBattleEncounter::HandleEnemyHealthChanged(float OldHealth, float NewHealth, float MaxHealth)
+{
+	if (!bEnabledMidFightTrigger || bMidFightTriggerd || bCompleted)
+	{
+		return;
+	}
+	
+	if (MaxHealth <= 0.0f)
+	{
+		return;
+	}
+	
+	// 죽는 타격에서는 Mid-Fight를 발동시키지 않음
+	if (NewHealth <= 0.0f)
+	{
+		return;
+	}
+	
+	const float OldNormalized = OldHealth / MaxHealth;
+	const float NewNormalized = NewHealth / MaxHealth;
+	
+	//위에서 아래로 임계점을 통과했을 떄만 발동
+	if (OldNormalized > MidFightHealthThreshold && NewNormalized <= MidFightHealthThreshold)
+	{
+		bMidFightTriggerd = true;
+		
+		UE_LOG(LogDIBattleEncounter,Log,TEXT("MID FIGHT TRIGGERD: %s | HP %.1f/%.1f | Normalized %.2f"),
+			*GetName(), NewHealth, MaxHealth, NewNormalized);
+		
+		OnMidFightTriggerd(NewNormalized);
+	}
+}
+
+void ADIBattleEncounter::HandleTriggerBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if (bStarted || bCompleted)
+	{
+		return;
+	}
+	
+	ACharacter* Player = UGameplayStatics::GetPlayerCharacter(this, 0);
+	
+	if (!IsValid(Player))
+	{
+		return;
+	}
+	
+	if (OtherActor != Player)
+	{
+		return;
+	}
+	
+	StartEncounter();
 }
 
 void ADIBattleEncounter::StartEncounter()
@@ -26,9 +103,20 @@ void ADIBattleEncounter::StartEncounter()
 	}
 	
 	bStarted = true;
-	AliveCount = 0;
+	bCombatStarted = false;
+	bMidFightTriggerd = false;
 	
-	UE_LOG(LogDIBattleEncounter,Log,TEXT("Encounter START %s"), *GetName());
+	AliveCount = 0;
+	SpawnedEnemies.Reset();
+	
+	//한번 발동했으면 다시 Trigger되지 않게 함,
+	BattleTrigger->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	
+	//전투구역 봉쇄
+	SetBattleBlockerEnabled(true);
+	
+	UE_LOG(LogDIBattleEncounter, Log, TEXT("Encounter START: %s"), *GetName());
+	
 	
 	//Blocker 활성화, Combat Stance, 사운드 등, 레벨별 Presentation은 Blueprint가 담당.
 	OnEncounterStarted();
@@ -41,7 +129,56 @@ void ADIBattleEncounter::StartEncounter()
 		UE_LOG(LogDIBattleEncounter, Warning, TEXT("Encounter '%s' spawned zero valid enemies"), *GetName());
 		
 		CompleteEncounter();
+		return;
 	}
+	
+	UE_LOG(LogDIBattleEncounter,Log,TEXT("Encounter READY: %s | Enemies %d"),*GetName(),AliveCount);
+	
+	OnEncounterReady();
+	
+	if (bAutoStartCombat)
+	{
+		StartCombat();
+	}
+}
+
+void ADIBattleEncounter::StartCombat()
+{
+	if (!bStarted || bCompleted || bCombatStarted)
+	{
+		return;
+	}
+	
+	bCombatStarted = true;
+	
+	UE_LOG(LogDIBattleEncounter,Log,TEXT("Combat START: %s"), *GetName());
+	
+	for (ADongincheonEnemyBase* Enemy : SpawnedEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
+		
+		if (Enemy->HealthComponent)
+		{
+			Enemy->HealthComponent->SetDamageEnabled(true);
+		}
+		
+		ADongincheonAIController* AIController = Cast<ADongincheonAIController>(Enemy->GetController());
+		
+		if (!IsValid(AIController))
+		{
+			UE_LOG(LogDIBattleEncounter,Error,TEXT("Combat START failed: Enemy '%s' has invaild AIController"),
+				*GetNameSafe(Enemy));
+			
+			continue;
+		}
+		
+		AIController->StartStateTreeLogic();
+	}
+	
+	OnCombatStarted();
 }
 
 void ADIBattleEncounter::SpawnEnemies()
@@ -86,6 +223,9 @@ void ADIBattleEncounter::SpawnEnemies()
 		
 		UHealthComponent* Health = SpawnedEnemy->FindComponentByClass<UHealthComponent>();
 		
+		UE_LOG(LogDIBattleEncounter,Warning,TEXT("HEALTH CHECK Encounter | Enemy=%s | Health=%s | Ptr=%p | EnemyMemberHealth=%s | MemberPtr=%p"),
+			*GetNameSafe(SpawnedEnemy),*GetNameSafe(Health),Health,*GetNameSafe(SpawnedEnemy->HealthComponent), SpawnedEnemy->HealthComponent.Get());
+		
 		if (!IsValid(Health))
 		{
 			UE_LOG(LogDIBattleEncounter,Error,TEXT("Enemy '%s' has no native UHealthComponent."),
@@ -96,6 +236,18 @@ void ADIBattleEncounter::SpawnEnemies()
 		}
 		
 		Health->OnDeath.AddUniqueDynamic(this,&ADIBattleEncounter::HandleEnemyDeath);
+		
+		if (bEnabledMidFightTrigger)
+		{
+			Health->OnHealthChanged.AddUniqueDynamic(this, &ADIBattleEncounter::HandleEnemyHealthChanged);
+		}
+		
+		if (!bAutoStartCombat)
+		{
+			Health->SetDamageEnabled(false);
+		}
+		
+		SpawnedEnemies.Add(SpawnedEnemy);
 		
 		++AliveCount;
 		
@@ -118,6 +270,8 @@ void ADIBattleEncounter::SpawnEnemies()
 		}
 	}
 }
+
+
 
 void ADIBattleEncounter::HandleEnemyDeath(AActor* DamageCauser)
 {
@@ -145,19 +299,24 @@ void ADIBattleEncounter::CompleteEncounter()
 	
 	bCompleted = true;
 	
+	//전투종료, Block해제
+	SetBattleBlockerEnabled(false);
+	
 	UE_LOG(LogDIBattleEncounter, Log, TEXT("Encounter COMPLETE: %s"), *GetName());
 	
 	//Blocker 해제, Combat Stance 해제, 다음 Gameplay Flow는 Blueprint가 담당.
 	OnEncounterCompleted();
 }
 
-
-
-
-
-
-
-
-
-
-
+void ADIBattleEncounter::SetBattleBlockerEnabled(bool bEnabled)
+{
+	for (AActor* Blocker : BattleBlockers)
+	{
+		if (!IsValid(Blocker))
+		{
+			continue;
+		}
+		
+		Blocker->SetActorEnableCollision(bEnabled);
+	}
+}

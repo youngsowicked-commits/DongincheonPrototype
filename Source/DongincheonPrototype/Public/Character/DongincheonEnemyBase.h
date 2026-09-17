@@ -29,6 +29,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Enemy|Data")
 	TObjectPtr<UDIEnemyDefinition> EnemyDefinition = nullptr;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Enemy|AI")
+	bool bAutoStartStateTreeOnPossess = true;
+	
+	bool ShouldAutoStartStateTreeOnPossess() const
+	{
+		return bAutoStartStateTreeOnPossess;
+	}
+	
 	bool StartAttack(int32 AttackIndex);
 	bool IsAttackActive() const;
 	void FinishAttack();

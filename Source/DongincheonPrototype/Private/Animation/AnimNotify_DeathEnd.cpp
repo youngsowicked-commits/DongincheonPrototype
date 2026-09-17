@@ -3,6 +3,7 @@
 
 #include "Animation/AnimNotify_DeathEnd.h"
 
+#include "Character/DongincheonCharacter.h"
 #include "Character/DongincheonEnemyBase.h"
 #include "Components/SkeletalMeshComponent.h"
 
@@ -12,21 +13,30 @@ FString UAnimNotify_DeathEnd::GetNotifyName_Implementation() const
 }
 
 void UAnimNotify_DeathEnd::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation,
-                                  const FAnimNotifyEventReference& EventReference)
+const FAnimNotifyEventReference& EventReference)
 {
 	Super::Notify(MeshComp, Animation, EventReference);
 	
-	if (!MeshComp)
+	if (!IsValid(MeshComp))
 	{
 		return;
 	}
 	
-	ADongincheonEnemyBase* Enemy = Cast<ADongincheonEnemyBase>(MeshComp->GetOwner());
+	AActor* Owner = MeshComp->GetOwner();
 	
-	if (!IsValid(Enemy))
+	if (!IsValid(Owner))
 	{
 		return;
 	}
 	
-	Enemy->FinalizeDeath();
+	if (ADongincheonEnemyBase* Enemy = Cast<ADongincheonEnemyBase>(Owner))
+	{
+		Enemy->FinalizeDeath();
+		return;
+	}
+	
+	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(Owner))
+	{
+		Player->FinalizePlayerDeath();
+	}
 }

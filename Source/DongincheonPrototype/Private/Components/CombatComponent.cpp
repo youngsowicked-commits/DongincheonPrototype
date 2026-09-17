@@ -5,6 +5,8 @@
 
 #include "Components/HealthComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Character/DongincheonCharacter.h"
+#include "Character/DongincheonEnemyBase.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
@@ -171,7 +173,7 @@ float UCombatComponent::DealDamage(AActor* Target, float DamageAmount)
 {
 	AActor* Owner = GetOwner();
 	
-	if (!IsValid(Target) || !IsValid(Owner) || Target == Owner || DamageAmount <= 0.0f)
+	if (!IsValidCombatTarget(Target) || DamageAmount <= 0.0f)
 	{
 		return 0.0f;
 	}
@@ -284,7 +286,26 @@ bool UCombatComponent::ProcessSocketHit(FName SocketName)
 		{
 			continue;
 		}
-
+		
+		// 자기 자신 타격 방지
+		if (HitActor == OwnerCharacter)
+		{
+			continue;
+		}
+		
+		const bool bOwnerIsPlayer = OwnerCharacter->IsA<ADongincheonCharacter>();
+		const bool bOwnerIsEnemy = OwnerCharacter->IsA<ADongincheonEnemyBase>();
+		const bool bTargetIsPlayer = HitActor->IsA<ADongincheonCharacter>();
+		const bool bTargetIsEnemy = HitActor->IsA<ADongincheonEnemyBase>();
+		
+		//Player - Enemy끼리만 전투 허용
+		const bool bValidCombatTarget = (bOwnerIsPlayer && bTargetIsEnemy) || (bOwnerIsEnemy && bTargetIsPlayer);
+		
+		if (!bValidCombatTarget)
+		{
+			continue;
+		}
+		
 		const TWeakObjectPtr<AActor> HitActorPtr(HitActor);
 
 		if (HitActorThisAttack.Contains(HitActorPtr))
@@ -298,8 +319,7 @@ bool UCombatComponent::ProcessSocketHit(FName SocketName)
 
 		if (ActiveDamageAmount > 0.0f)
 		{
-			AppliedDamage = DealDamage(HitActor, ActiveDamageAmount
-			);
+			AppliedDamage = DealDamage(HitActor, ActiveDamageAmount);
 		}
 
 		if (ActiveKnockbackStrength > 0.0f)

@@ -26,6 +26,12 @@ public:
 	// Sets default values for this component's properties
 	UHealthComponent();
 	
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	void SetDamageEnabled(bool bEnabled);
+	
+	UFUNCTION(BlueprintPure, Category = "Health")
+	bool IsDamageEnabled() const;
+	
 	UFUNCTION(BlueprintPure, Category = "Health")
 	float GetCurrentHealth() const;
 	
@@ -70,6 +76,9 @@ private:
 	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Transient, Category = "Health", meta = (AllowPrivateAccess = "true"))
 	float CurrentHealth = 0.0f;
+	
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Transient, Category = "Health", meta = (AllowPrivateAccess = "true"))
+	bool bDamageEnalbe = true;
 	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Transient, Category = "Health", meta = (AllowPrivateAccess = "true"))
 	bool bIsDead = false;

@@ -295,6 +295,20 @@ void ADongincheonEnemyBase::StopHitReact(float BlendOutTime)
 
 bool ADongincheonEnemyBase::StartDeath()
 {
+	//Death Gameplay State는 Presentation보다 먼저 보장한다.
+	//Death Montage가 없거나 재생 실패해도 AI가 계속 움직이면 안 된다.
+	if (AAIController* AIController = Cast<AAIController>(GetController()))
+	{
+		AIController->StopMovement();
+	}
+	
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->StopMovementImmediately();
+		Movement->DisableMovement();
+	}
+	
+	
 	if (!EnemyDefinition)
 	{
 		UE_LOG(LogTemp,Warning,TEXT("Death failed : EnemyDefinition is null on %s"), *GetName());
@@ -323,18 +337,6 @@ bool ADongincheonEnemyBase::StartDeath()
 		return false;
 	}
 	
-	// 기존 AI 이동 요청 정기
-	if (AAIController* AIController = Cast<AAIController>(GetController()))
-	{
-		AIController->StopMovement();
-	}
-	
-	// 실제 캐릭터 속도 제거 + 사망 후 이동 완전 차단
-	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-	{
-		Movement->StopMovementImmediately();
-		Movement->DisableMovement();
-	}
 	
 	const float MontageResult = AnimInstance->Montage_Play(EnemyDefinition->Death.Montage,EnemyDefinition->Death.PlayRate,
 		EMontagePlayReturnType::MontageLength, 0.0f, EnemyDefinition->Death.bStopAllMontage);
@@ -386,13 +388,26 @@ void ADongincheonEnemyBase::FinalizeDeath()
 void ADongincheonEnemyBase::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
+	UE_LOG(LogTemp,Warning,TEXT("01B HEALTH CHECK: Enemy=%s | MemberHealth=%s | Ptr=%p"),*GetName(),
+		*GetNameSafe(HealthComponent),HealthComponent.Get());
+
+	TArray<UHealthComponent*> HealthComponents;
+	GetComponents<UHealthComponent>(HealthComponents);
+
+	UE_LOG(LogTemp,Warning,TEXT("01B HEALTH CHECK: UHealthComponent Count=%d"),HealthComponents.Num());
+
+	for (UHealthComponent* Component : HealthComponents)
+	{
+		UE_LOG(LogTemp,Warning,TEXT("01B HEALTH CHECK: Found=%s | Ptr=%p"),*GetNameSafe(Component),Component);
+	}
+
 	if (HealthComponent)
 	{
-		HealthComponent->OnDamaged.AddUniqueDynamic(this,&ADongincheonEnemyBase::HandleHealthDamaged);
-		HealthComponent->OnDeath.AddUniqueDynamic(this,&ADongincheonEnemyBase::HandleHealthDeath);
+		HealthComponent->OnDamaged.AddUniqueDynamic(this, &ADongincheonEnemyBase::HandleHealthDamaged);
+
+		HealthComponent->OnDeath.AddUniqueDynamic(this, &ADongincheonEnemyBase::HandleHealthDeath);
 	}
-	
 }
 
 void ADongincheonEnemyBase::HandleHealthDamaged(float DamageAmount, AActor* DamageCauser)
@@ -422,9 +437,22 @@ void ADongincheonEnemyBase::HandleHealthDamaged(float DamageAmount, AActor* Dama
 
 void ADongincheonEnemyBase::HandleHealthDeath(AActor* DamageCauser)
 {
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("01B DEATH: HandleHealthDeath | Enemy=%s"),
+		*GetNameSafe(this));
+	
 	if (ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController()))
 	{
 		AIController->SendDeadEvent();
+	}
+	else
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("01B DEATH: AIController Cast FAILED"));
 	}
 	
 	OnDeathPresentation(DamageCauser);
