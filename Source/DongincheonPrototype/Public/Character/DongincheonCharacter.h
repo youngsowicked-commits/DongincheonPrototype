@@ -17,6 +17,14 @@ class UCameraShakeBase;
 
 struct FInputActionValue;
 
+UENUM(BlueprintType)
+enum class EPlayerDodgeDirection : uint8
+{
+	Backward,
+	Left,
+	Right
+};
+
 UCLASS()
 class DONGINCHEONPROTOTYPE_API ADongincheonCharacter : public ACharacter
 {
@@ -41,7 +49,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Player|Movement")
 	bool IsMovementInputAllowed() const;
 	
+	UFUNCTION(BlueprintCallable, Category = "Player|Input")
+	void SetPrentationInputLocked(bool blocked);
+	
+	UFUNCTION(BlueprintCallable, Category = "Player|Input")
+	void SetInteractionInputLocked(bool bLocked);
+	
+	UFUNCTION(BlueprintPure, Category = "Player|Input")
+	bool IsGameplayInputLocked() const
+	{
+		return bInteractionInputLocked || bPresentationInputLocked;
+	}
+	
 	void FinalizePlayerDeath();
+	
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
 protected:
 	virtual void BeginPlay() override;
@@ -51,6 +73,47 @@ protected:
 	//Input
 	void HandleLockOnStarted(const FInputActionValue& Value);
 	void HandleLockOnEnded(const FInputActionValue& Value);
+	
+	void HandleMoveInputStartedOrTriggered(const FInputActionValue& Value);
+	void HandleMoveInputCompleted(const FInputActionValue& Value);
+	
+	void HandleDodgeInput();
+	
+	//Guard
+	void HandleGuardStarted();
+	void HandleGuardEnded();
+	
+	//Dodge
+	void StartPlayerDodge();
+	
+	EPlayerDodgeDirection ResolvePlayerDodgeDirection() const;
+	
+	UAnimMontage* GetDodgeMontage(EPlayerDodgeDirection Direction) const;
+	
+	FVector GetDodgeWorldDirection(EPlayerDodgeDirection Direction) const;
+	
+	void HandleDodgeMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	
+	void CancelPlayerDodge(float BlendOutTime = 0.0f);
+	
+	void ResetPlayerDodgeState();
+	
+	//Guard
+	void StartPlayerGuard();
+	
+	void StopPlayerGuard(float BlendOutTime = 0.1f);
+	
+	void HandleGuardMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	
+	void StartPlayerGuardHitReact();
+	
+	void HandleGuardHitReactMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	
+	void StartPlayerGuardBreak();
+	
+	void HandleGuardBreakMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	
+	void FinishPlayerGuardBreak();
 	
 	//Health
 	UFUNCTION()
@@ -112,9 +175,58 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
 	TObjectPtr<UInputAction> AttackAction;
 	
+	//Move
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
+	TObjectPtr<UInputAction> MoveAction;
+	
+	//Dodge
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
+	TObjectPtr<UInputAction> DodgeAction;
+	
+	//Guard
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
+	TObjectPtr<UInputAction> GuardAction;
+	
 	//LockOn
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> LockOnAction;
+	
+
+	//Dodge Content
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Dodge")
+	TObjectPtr<UAnimMontage> DodgeBackwardMontage;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Dodge")
+	TObjectPtr<UAnimMontage> DodgeLeftMontage;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Dodge")
+	TObjectPtr<UAnimMontage> DodgeRightMontage;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Dodge", meta = (ClampMin = "0.01"))
+	float DodgePlayRate = 1.0f;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Dodge", meta = (ClampMin = "0.0"))
+	float DodgeStrength = 650.0f;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Dodge")
+	bool bDodgeStopAllMontages = true;
+	
+	//Guard Content
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Guard")
+	TObjectPtr<UAnimMontage> GuardMontage;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Guard")
+	TObjectPtr<UAnimMontage> GuardHitReactMontage;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Guard")
+	TObjectPtr<UAnimMontage> GuardBreakMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Guard",
+		meta = (ClampMin = "0.01"))
+	float GuardBreakPlayRate = 1.0f;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Guard", meta = (ClampMin = "0.01"))
+	float GuardPlayRate = 1.0f;
 	
 	//Attack Content
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack")
@@ -154,6 +266,12 @@ protected:
 	float FinisherHitStopDuration = 0.3f;
 	
 	//Runtime State
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Input|Runtime")
+	bool bPresentationInputLocked = false;
+	
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Input|Runtime")
+	bool bInteractionInputLocked = false;
+	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
 	bool bPlayerAttackActive = false;
 	
@@ -162,6 +280,12 @@ protected:
 	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
 	int32 ActiveComboIndex = 0;
+	
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
+	bool bPlayerDodging = false;
+	
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
+	bool bGuardInputHeld = false;
 	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
 	bool bPlayerHitReacting = false;
@@ -176,10 +300,24 @@ protected:
 	TObjectPtr<UAnimMontage> ActiveAttackMontage;
 	
 	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveDodgeMontage;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveGuardMontage;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveGuardHitReactMontage;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveGuardBreakMontage;
+	
+	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> ActiveHitReactMontage;
 	
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> ActiveDeathMontage;
+	
+	FVector2D CachedMoveInput = FVector2D::ZeroVector;
 	
 	bool bHitStopActive = false;
 	

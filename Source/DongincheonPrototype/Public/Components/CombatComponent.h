@@ -12,6 +12,17 @@ class UDamageType;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams
 (FOnCombatHitConfirmed, AActor*, HitActor, FVector, HitLocation, FName, HitSocketName,float,AppliedDamage);
 
+UENUM(BlueprintType)
+enum class EGuardResult : uint8
+{
+	NotBlocked,
+	Blocked,
+	GuardBroken
+};
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnGuardHit, float, BlockedDamage, AActor*, DamageCauser);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnGuardBroken, float, BlockedDamage, AActor*, DamageCauser);
+
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class DONGINCHEONPROTOTYPE_API UCombatComponent : public UActorComponent
 {
@@ -24,7 +35,7 @@ public:
 	// Attack Lifecycle
 
 	UFUNCTION(BlueprintCallable, Category = "Combat|Attack")
-	void BeginAttack(float DamageAmount, float KnockbackStrength);
+	void BeginAttack(float DamageAmount, float KnockbackStrength, bool bBreakGuard = false);
 	
 	UFUNCTION(BlueprintCallable, Category = "Combat|Attack")
 	void EndAttack();
@@ -34,6 +45,38 @@ public:
 	{
 		return bAttackActive;
 	}
+	
+	UFUNCTION(BlueprintPure, Category = "Combat|Attack")
+	bool DoesActiveAttackBreakGuard() const
+	{
+		return bActiveAttackBreakGuard;
+	}
+	
+	//Guard LifeCycle
+	
+	UFUNCTION(BlueprintCallable, Category = "Combat|Guard")
+	void BeginGuard();
+	
+	UFUNCTION(BlueprintCallable, Category = "Combat|Guard")
+	void EndGuard();
+	
+	UFUNCTION(BlueprintPure, Category = "Combat|Guard")
+	bool IsGuarding() const
+	{
+		return bGuardActive;
+	}
+	
+	UFUNCTION(BlueprintPure, Category = "Combat|Guard")
+	bool IsGuardBroken() const
+	{
+		return bGuardBroken;
+	}
+	
+	UFUNCTION(BlueprintCallable, Category = "Combat|Guard")
+	EGuardResult TryBlockDamage(float IncomingDamage, AActor* DamageCauser);
+
+	UFUNCTION(BlueprintCallable, Category = "Combat|Guard")
+	void RecoverFromGuardBreak();
 	
 	// Hit Detection
 	/*Debug / inspection용 Socket Hit Test.
@@ -74,6 +117,11 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Combat|Events")
 	FOnCombatHitConfirmed OnHitConfirmed;
 	
+	UPROPERTY(BlueprintAssignable, Category = "Combat|Events")
+	FOnGuardHit OnGuardHit;
+	
+	UPROPERTY(BlueprintAssignable, Category = "Combat|Events")
+	FOnGuardBroken OnGuardBroken;
 
 	
 private:
@@ -83,6 +131,19 @@ private:
 	bool IsValidCombatTarget(AActor* Target) const;
 	
 	void ApplyKnockback(AActor* Target, float KnockbackStrength) const;
+	
+	// Guard Settings
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Guard", meta = (AllowPrivateAccess = "true",
+		ClampMin = "-1.0", ClampMax = "1.0"))
+	float GuardFrontDotThreshold = 0.35f;
+	
+	
+	//Runtime Guard State
+	UPROPERTY(Transient)
+	bool bGuardActive = false;
+	
+	UPROPERTY(Transient)
+	bool bGuardBroken = false;
 	
 	// Damage Settings
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Damage", meta = (AllowPrivateAccess = "true"))
@@ -104,6 +165,9 @@ private:
 	
 	UPROPERTY(Transient)
 	float ActiveKnockbackStrength = 0.0f;
+	
+	UPROPERTY(Transient)
+	bool bActiveAttackBreakGuard = false;
 	
 	TSet<TWeakObjectPtr<AActor>> HitActorThisAttack;
 };

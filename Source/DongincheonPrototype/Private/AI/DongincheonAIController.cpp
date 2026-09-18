@@ -9,6 +9,8 @@
 
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_HitReact,"StateTreeEvent.Enemy.HitReact");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Dead,"StateTreeEvent.Enemy.Dead");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Presentation_Begin,"StateTreeEvent.Enemy.Presentation.Begin");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Presentation_End,"StateTreeEvent.Enemy.Presentation.End");
 
 
 ADongincheonAIController::ADongincheonAIController()
@@ -166,3 +168,28 @@ void ADongincheonAIController::StartStateTreeLogic()
 	*/
 	//UE_LOG(LogTemp,Warning,TEXT("01B: StateTree StartLogic called | Pawn=%s"), *GetNameSafe(GetPawn()));
 }
+
+void ADongincheonAIController::EnterPresentationState()
+{
+	if (!StateTreeComponent || !StateTreeComponent->IsRunning())
+	{
+		return;
+	}
+	
+	StateTreeComponent->SendStateTreeEvent(FStateTreeEvent(TAG_StateTreeEvent_Enemy_Presentation_Begin));
+	
+	UE_LOG(LogTemp,Warning,TEXT("01B: Presentation BEGIN event set | Pawn=%s"), *GetNameSafe(GetPawn()));
+}
+
+void ADongincheonAIController::ExitPresentationState()
+{
+	if (!StateTreeComponent || !StateTreeComponent->IsRunning())
+	{
+		return;
+	}
+	
+	StateTreeComponent->SendStateTreeEvent(FStateTreeEvent(TAG_StateTreeEvent_Enemy_Presentation_End));
+	
+	UE_LOG(LogTemp,Warning,TEXT("01B: Presentation END event sent | Pawn=%s"), *GetNameSafe(GetPawn()));
+}
+

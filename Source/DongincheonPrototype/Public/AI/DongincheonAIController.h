@@ -26,6 +26,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AI|StateTree")
 	void StartStateTreeLogic();
 	
+	UFUNCTION(BlueprintCallable, Category = "AI|StateTree")
+	void EnterPresentationState();
+	
+	UFUNCTION(BlueprintCallable, Category = "AI|StateTree")
+	void ExitPresentationState();
+	
 protected:
 	virtual void OnPossess(APawn* InPawn) override;
 	

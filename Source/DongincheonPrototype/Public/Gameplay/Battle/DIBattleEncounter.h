@@ -37,13 +37,19 @@ public:
 	void StartCombat();
 	
 	UFUNCTION(BlueprintPure, Category = "Battle")
+	bool IsCombatStarted() const {return bCombatStarted;}
+	
+	UFUNCTION(BlueprintCallable, Category = "Battle|Flow")
+	void PauseCombatForPresentation();
+	
+	UFUNCTION(BlueprintCallable, Category = "Battle|Flow")
+	void ResumeCombatFromPresentation();
+	
+	UFUNCTION(BlueprintPure, Category = "Battle")
 	int32 GetAliveCount() const {return AliveCount;}
 	
 	UFUNCTION(BlueprintPure, Category = "Battle")
 	bool IsStarted() const {return bStarted;}
-	
-	UFUNCTION(BlueprintPure, Category = "Battle")
-	bool IsCombatStarted() const {return bCombatStarted;}
 	
 	UFUNCTION(BlueprintPure, Category = "Battle")
 	bool IsCompleted() const {return bCompleted;}
@@ -71,19 +77,13 @@ protected:
 	//Cinematic,Placeholder 종료시 BP에서 StartCombat()g 호출
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Flow")
 	bool bAutoStartCombat = true;
-	
-	//Boss Mid-Fight 같은 1회성 체력 임계점 이벤스 사용 여부
+
+	//체력이 임계점 아래로 최초 진입했을 떄 호출
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Flow")
-	bool bEnabledMidFightTrigger = false;
+	TArray<FDIBattleHealthTrigger> HealthTriggers;
 	
-	//0.5 = MaxHealth의 50
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Flow", meta = (ClampMin = "0.0", ClampMax = "1.0",
-		UIMin = "0.0", UIMax = "1.0"))
-	float MidFightHealthThreshold = 0.5f;
-	
-	//체력이 임계점 아래로 최초 진입했을 떄 1회 호출
 	UFUNCTION(BlueprintImplementableEvent, Category = "Battle|Presentation")
-	void OnMidFightTriggerd(float HealthNormalized);
+	void OnHealthTriggerActivated(FName TriggerId, float HealthNormalized);
 	
 	//문 닫기, Combat State, 사운드, 연출 등은 Blueprint가 담당
 	
@@ -115,18 +115,20 @@ private:
 	UPROPERTY(VisibleInstanceOnly, Category = "Battle|Runtime")
 	bool bCompleted = false;
 	
+	UPROPERTY(VisibleInstanceOnly, Category = "Battle|Runtime")
+	bool bCombatPausedForPresentation = false;
+	
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<ADongincheonEnemyBase>> SpawnedEnemies;
-	
-	UPROPERTY(VisibleInstanceOnly, Category = "Battle|Runtime")
-	bool bMidFightTriggerd = false;
-	
-	UFUNCTION()
-	void HandleEnemyHealthChanged(float OldHealth, float NewHealth, float MaxHealth);
 	
 	UFUNCTION()
 	void HandleTriggerBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
 		int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	
+	TSet<int32> TriggeredHealthTriggerIndices;
+	
+	UFUNCTION()
+	void HandleEnemyHealthChanged(float OldHealth, float NewHealth, float MaxHealth);
 	
 	UFUNCTION()
 	void HandleEnemyDeath(AActor* DamageCauser);

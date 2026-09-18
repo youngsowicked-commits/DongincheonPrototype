@@ -1,5 +1,6 @@
 ﻿#include "Gameplay/Battle/DIBattleEncounter.h"
 
+#include "Character/DongincheonCharacter.h"
 #include "Character/DongincheonEnemyBase.h"
 #include "Components/HealthComponent.h"
 #include "AI/DongincheonAIController.h"
@@ -41,18 +42,7 @@ void ADIBattleEncounter::BeginPlay()
 
 void ADIBattleEncounter::HandleEnemyHealthChanged(float OldHealth, float NewHealth, float MaxHealth)
 {
-	if (!bEnabledMidFightTrigger || bMidFightTriggerd || bCompleted)
-	{
-		return;
-	}
-	
-	if (MaxHealth <= 0.0f)
-	{
-		return;
-	}
-	
-	// 죽는 타격에서는 Mid-Fight를 발동시키지 않음
-	if (NewHealth <= 0.0f)
+	if (bCompleted || MaxHealth <= 0.0f || NewHealth <= 0.0f)
 	{
 		return;
 	}
@@ -60,15 +50,29 @@ void ADIBattleEncounter::HandleEnemyHealthChanged(float OldHealth, float NewHeal
 	const float OldNormalized = OldHealth / MaxHealth;
 	const float NewNormalized = NewHealth / MaxHealth;
 	
-	//위에서 아래로 임계점을 통과했을 떄만 발동
-	if (OldNormalized > MidFightHealthThreshold && NewNormalized <= MidFightHealthThreshold)
+	for (int32 Index = 0; Index < HealthTriggers.Num(); ++Index)
 	{
-		bMidFightTriggerd = true;
+		if (TriggeredHealthTriggerIndices.Contains(Index))
+		{
+			continue;
+		}
 		
-		UE_LOG(LogDIBattleEncounter,Log,TEXT("MID FIGHT TRIGGERD: %s | HP %.1f/%.1f | Normalized %.2f"),
-			*GetName(), NewHealth, MaxHealth, NewNormalized);
+		const FDIBattleHealthTrigger& Trigger = HealthTriggers[Index];
 		
-		OnMidFightTriggerd(NewNormalized);
+		if (Trigger.TriggerId.IsNone())
+		{
+			continue;
+		}
+		
+		if (OldNormalized > Trigger.HealthThreshold && NewNormalized <= Trigger.HealthThreshold)
+		{
+			TriggeredHealthTriggerIndices.Add(Index);
+			
+			UE_LOG(LogDIBattleEncounter,Log,TEXT("HEALTH TRIGGER: %s | Id=%s | HP=%.1f/%.1f | Normalized=%.2f"),
+				*GetName(),*Trigger.TriggerId.ToString(),NewHealth,MaxHealth,NewNormalized);
+			
+			OnHealthTriggerActivated(Trigger.TriggerId,NewNormalized);
+		}
 	}
 }
 
@@ -103,11 +107,14 @@ void ADIBattleEncounter::StartEncounter()
 	}
 	
 	bStarted = true;
+	bCompleted = false;
 	bCombatStarted = false;
-	bMidFightTriggerd = false;
+	bCombatPausedForPresentation = false;
 	
 	AliveCount = 0;
 	SpawnedEnemies.Reset();
+	TriggeredHealthTriggerIndices.Reset();
+
 	
 	//한번 발동했으면 다시 Trigger되지 않게 함,
 	BattleTrigger->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -150,6 +157,7 @@ void ADIBattleEncounter::StartCombat()
 	}
 	
 	bCombatStarted = true;
+	bCombatPausedForPresentation = false;
 	
 	UE_LOG(LogDIBattleEncounter,Log,TEXT("Combat START: %s"), *GetName());
 	
@@ -179,6 +187,84 @@ void ADIBattleEncounter::StartCombat()
 	}
 	
 	OnCombatStarted();
+}
+
+void ADIBattleEncounter::PauseCombatForPresentation()
+{
+	if (!bCombatStarted || bCompleted || bCombatPausedForPresentation)
+	{
+		return;
+	}
+	
+	bCombatPausedForPresentation = true;
+	
+	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(UGameplayStatics::GetPlayerCharacter(this,0)))
+	{
+		Player->SetPrentationInputLocked(true);
+	}
+	
+	for (ADongincheonEnemyBase* Enemy : SpawnedEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
+		
+		if (Enemy->HealthComponent)
+		{
+			Enemy->HealthComponent->SetDamageEnabled(false);
+		}
+		
+		ADongincheonAIController* AIController = Cast<ADongincheonAIController>(Enemy->GetController());
+		
+		if (!AIController)
+		{
+			continue;
+		}
+		
+		AIController->EnterPresentationState();
+	}
+	
+	UE_LOG(LogDIBattleEncounter,Log,TEXT("Combat PAUSED for presentation: %s"), *GetName());
+}
+
+void ADIBattleEncounter::ResumeCombatFromPresentation()
+{
+	if (!bCombatStarted || bCompleted || !bCombatPausedForPresentation)
+	{
+		return;
+	}
+	
+	bCombatPausedForPresentation = false;
+	
+	for (ADongincheonEnemyBase* Enemy : SpawnedEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;;
+		}
+		
+		ADongincheonAIController* AIController = Cast<ADongincheonAIController>(Enemy->GetController());
+		
+		if (!AIController)
+		{
+			continue;
+		}
+		
+		AIController->ExitPresentationState();
+		
+		if (Enemy->HealthComponent)
+		{
+			Enemy->HealthComponent->SetDamageEnabled(true);
+		}
+	}
+	
+	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(UGameplayStatics::GetPlayerCharacter(this,0)))
+	{
+		Player->SetPrentationInputLocked(false);
+	}
+	
+	UE_LOG(LogDIBattleEncounter,Log,TEXT("Combat RESUMED from presentation: %s"), *GetName());
 }
 
 void ADIBattleEncounter::SpawnEnemies()
@@ -237,7 +323,7 @@ void ADIBattleEncounter::SpawnEnemies()
 		
 		Health->OnDeath.AddUniqueDynamic(this,&ADIBattleEncounter::HandleEnemyDeath);
 		
-		if (bEnabledMidFightTrigger)
+		if (HealthTriggers.Num() > 0)
 		{
 			Health->OnHealthChanged.AddUniqueDynamic(this, &ADIBattleEncounter::HandleEnemyHealthChanged);
 		}

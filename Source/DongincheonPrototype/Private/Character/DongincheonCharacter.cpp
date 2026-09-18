@@ -57,6 +57,25 @@ void ADongincheonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		return;
 	}
 	
+	if (IsValid(MoveAction))
+	{
+		EnhancedInput->BindAction(MoveAction,ETriggerEvent::Triggered,this,&ADongincheonCharacter::HandleMoveInputStartedOrTriggered);
+		EnhancedInput->BindAction(MoveAction,ETriggerEvent::Completed,this,&ADongincheonCharacter::HandleMoveInputCompleted);
+		EnhancedInput->BindAction(MoveAction,ETriggerEvent::Canceled,this,&ADongincheonCharacter::HandleMoveInputCompleted);
+	}
+	
+	if (IsValid(DodgeAction))
+	{
+		EnhancedInput->BindAction(DodgeAction, ETriggerEvent::Started,this,&ADongincheonCharacter::HandleDodgeInput);
+	}
+	
+	if (IsValid(GuardAction))
+	{
+		EnhancedInput->BindAction(GuardAction,ETriggerEvent::Started,this,&ADongincheonCharacter::HandleGuardStarted);
+		EnhancedInput->BindAction(GuardAction,ETriggerEvent::Completed,this,&ADongincheonCharacter::HandleGuardEnded);
+		EnhancedInput->BindAction(GuardAction,ETriggerEvent::Canceled,this,&ADongincheonCharacter::HandleGuardEnded);
+	}
+	
 	if (IsValid(AttackAction))
 	{
 		EnhancedInput->BindAction(AttackAction, ETriggerEvent::Started, this, &ADongincheonCharacter::HandleAttackInput);
@@ -73,6 +92,11 @@ void ADongincheonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 void ADongincheonCharacter::HandleLockOnStarted(const FInputActionValue& Value)
 {
 	(void)Value;
+	
+	if (IsGameplayInputLocked())
+	{
+		return;
+	}
 	
 	if (!IsValid(HealthComponent) || HealthComponent->IsDead() || bPlayerDeathStarted)
 	{
@@ -95,9 +119,33 @@ void ADongincheonCharacter::HandleLockOnEnded(const FInputActionValue& Value)
 	}
 }
 
+void ADongincheonCharacter::HandleMoveInputStartedOrTriggered(const FInputActionValue& Value)
+{
+	if (IsGameplayInputLocked())
+	{
+		CachedMoveInput = FVector2D::ZeroVector;
+		return;
+	}
+	
+	CachedMoveInput = Value.Get<FVector2D>();
+}
+
+void ADongincheonCharacter::HandleMoveInputCompleted(const FInputActionValue& Value)
+{
+	(void)Value;
+	
+	CachedMoveInput = FVector2D::ZeroVector;
+}
+
+
 // Runtime Query
 bool ADongincheonCharacter::IsMovementInputAllowed() const
 {
+	if (IsGameplayInputLocked())
+	{
+		return false;
+	}
+	
 	if (!IsValid(HealthComponent))
 	{
 		return false;
@@ -108,18 +156,69 @@ bool ADongincheonCharacter::IsMovementInputAllowed() const
 		return false;
 	}
 	
-	return !bPlayerAttackActive && !bPlayerHitReacting && !bPlayerDeathStarted;
+	const bool bGuardLocked = IsValid(CombatComponent) && (CombatComponent->IsGuarding() || CombatComponent->IsGuardBroken());
+
+	return !bPlayerAttackActive && !bPlayerDodging && !bGuardLocked && !bPlayerHitReacting && !bPlayerDeathStarted;
+}
+
+void ADongincheonCharacter::SetPrentationInputLocked(bool blocked)
+{
+	if (bPresentationInputLocked == blocked)
+	{
+		return;
+	}
+	
+	bPresentationInputLocked = blocked;
+	
+	if (!blocked)
+	{
+		return;
+	}
+	
+	//진행중이던 일반 Gameplay Action 정리
+	CancelPlayerAttack(0.05f);
+	CancelPlayerDodge(0.05f);
+	
+	bGuardInputHeld = false;
+	
+	if (IsValid(CombatComponent) && CombatComponent->IsGuarding())
+	{
+		StopPlayerGuard(0.05f);
+	}
+	
+	CachedMoveInput = FVector2D::ZeroVector;
+	
+	if (IsValid(TargetingComponent))
+	{
+		TargetingComponent->ClearLockOn();
+	}
+	
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->StopMovementImmediately();
+	}
+}
+
+void ADongincheonCharacter::SetInteractionInputLocked(bool bLocked)
+{
+	bInteractionInputLocked = bLocked;
 }
 
 //Attack Input
 void ADongincheonCharacter::HandleAttackInput()
 {
+	if (IsGameplayInputLocked())
+	{
+		return;
+	}
+	
 	if (!IsValid(HealthComponent) || !IsValid(CombatComponent))
 	{
 		return;
 	}
 	
-	if (HealthComponent->IsDead() || bPlayerDeathStarted || bPlayerHitReacting)
+	if (HealthComponent->IsDead() || bPlayerDeathStarted || bPlayerHitReacting || bPlayerDodging || CombatComponent->IsGuarding() ||
+	CombatComponent->IsGuardBroken())
 	{
 		return;
 	}
@@ -314,6 +413,493 @@ void ADongincheonCharacter::HandleHealthDeath(AActor* DamageCauser)
 	StartPlayerDeath();
 }
 
+//Dodge
+void ADongincheonCharacter::HandleDodgeInput()
+{
+	if (IsGameplayInputLocked())
+	{
+		return;
+	}
+	
+	if (!IsValid(HealthComponent) || HealthComponent->IsDead())
+	{
+		return;
+	}
+	
+	if (bPlayerDeathStarted || bPlayerHitReacting || bPlayerDodging || bPlayerAttackActive || (IsValid(CombatComponent) &&
+		 (CombatComponent->IsGuarding() || CombatComponent->IsGuardBroken())))	
+	{
+		return;
+	}
+	
+	StartPlayerDodge();
+}
+
+void ADongincheonCharacter::StartPlayerDodge()
+{
+	if (!IsValid(GetMesh()))
+	{
+		return;
+	}
+	
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	
+	if (!IsValid(AnimInstance))
+	{
+		return;
+	}
+	
+	const EPlayerDodgeDirection DodgeDirection = ResolvePlayerDodgeDirection();
+	
+	UAnimMontage* MontageToPlay = GetDodgeMontage(DodgeDirection);
+	
+	if (!IsValid(MontageToPlay))
+	{
+		return;
+	}
+	
+	const FVector DodgeWorldDirection = GetDodgeWorldDirection(DodgeDirection);
+	
+	if (DodgeWorldDirection.IsNearlyZero())
+	{
+		return;
+	}
+	
+	bPlayerDodging = true;
+	
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->StopMovementImmediately();
+		
+		if (DodgeStrength > 0.0f)
+		{
+			Movement->AddImpulse(DodgeWorldDirection * DodgeStrength, true);
+		}
+	}
+	
+	const float SafePlayRate = DodgePlayRate > 0.0f ? DodgePlayRate : 1.0f;
+	const float MontageLength = AnimInstance->Montage_Play(MontageToPlay, SafePlayRate, EMontagePlayReturnType::MontageLength,
+		0.0f,bDodgeStopAllMontages);
+	
+	if (MontageLength <= 0.0f)
+	{
+		ResetPlayerDodgeState();
+		return;
+	}
+	
+	ActiveDodgeMontage = MontageToPlay;
+	
+	FOnMontageEnded MontageEndedDelegate;
+	
+	MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleDodgeMontageEnded);
+	
+	AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveDodgeMontage);
+}
+
+EPlayerDodgeDirection ADongincheonCharacter::ResolvePlayerDodgeDirection() const
+{
+	//IA_Move기본입력: X = Left, Right , Y = Forward, Backward
+	if (CachedMoveInput.X < -0.1f)
+	{
+		return EPlayerDodgeDirection::Left;
+	}
+	
+	if (CachedMoveInput.X > 0.1f)
+	{
+		return EPlayerDodgeDirection::Right;
+	}
+	
+	//무입력 , W, S 모두 Backstep
+	return EPlayerDodgeDirection::Backward;
+}
+
+UAnimMontage* ADongincheonCharacter::GetDodgeMontage(EPlayerDodgeDirection Direction) const
+{
+	switch (Direction)
+	{
+	case EPlayerDodgeDirection::Backward:
+		return DodgeBackwardMontage;
+		
+	case EPlayerDodgeDirection::Left:
+		return DodgeLeftMontage;
+		
+	case EPlayerDodgeDirection::Right:
+		return DodgeRightMontage;
+		
+	default:
+		return nullptr;
+	}
+}
+
+FVector ADongincheonCharacter::GetDodgeWorldDirection(EPlayerDodgeDirection Direction) const
+{
+	switch (Direction)
+	{
+	case EPlayerDodgeDirection::Backward:
+		return -GetActorForwardVector().GetSafeNormal2D();
+		
+	case EPlayerDodgeDirection::Left:
+		return -GetActorRightVector().GetSafeNormal2D();
+		
+	case EPlayerDodgeDirection::Right:
+		return GetActorRightVector().GetSafeNormal2D();
+		
+	default:
+		return FVector::ZeroVector;
+	}
+}
+
+void ADongincheonCharacter::HandleDodgeMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	(void)bInterrupted;
+	
+	if (!IsValid(Montage) || Montage != ActiveDodgeMontage)
+	{
+		return;
+	}
+	
+	ActiveDodgeMontage = nullptr;
+	
+	ResetPlayerDodgeState();
+}
+
+void ADongincheonCharacter::CancelPlayerDodge(float BlendOutTIme)
+{
+	UAnimMontage* MontageToStop = ActiveDodgeMontage;
+	
+	ActiveDodgeMontage = nullptr;
+	bPlayerDodging = false;
+	
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->StopMovementImmediately();
+	}
+	
+	if (!IsValid(MontageToStop) || !IsValid(GetMesh()))
+	{
+		return;
+	}
+	
+	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+	{
+		AnimInstance->Montage_Stop(FMath::Max(0.0f,BlendOutTIme),MontageToStop);
+	}
+}
+
+void ADongincheonCharacter::ResetPlayerDodgeState()
+{
+	ActiveDodgeMontage = nullptr;
+	bPlayerDodging = false;
+	
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->StopMovementImmediately();
+	}
+}
+
+//Guard
+void ADongincheonCharacter::HandleGuardStarted()
+{
+	if (!IsValid(HealthComponent) ||
+		HealthComponent->IsDead() ||
+		!IsValid(CombatComponent))
+	{
+		return;
+	}
+
+	bGuardInputHeld = true;
+
+	if (bPlayerDeathStarted ||
+		bPlayerHitReacting ||
+		bPlayerDodging ||
+		bPlayerAttackActive ||
+		CombatComponent->IsGuardBroken())
+	{
+		return;
+	}
+
+	if (IsValid(ActiveGuardHitReactMontage))
+	{
+		CombatComponent->BeginGuard();
+		return;
+	}
+
+	if (CombatComponent->IsGuarding())
+	{
+		return;
+	}
+
+	StartPlayerGuard();
+}
+
+void ADongincheonCharacter::HandleGuardEnded()
+{
+	//shift를 뗐음
+	bGuardInputHeld = false;
+	
+	
+	if (!IsValid(CombatComponent))
+	{
+		return;
+	}
+	
+	//가드 히트 리액션 재생중이면 애니메이션 끝까지 재생후 추가공격 가드하지 않음
+	if (IsValid(ActiveGuardHitReactMontage))
+	{
+		CombatComponent->EndGuard();
+		return;
+	}
+	
+	if (!CombatComponent->IsGuarding())
+	{
+		return;
+	}
+	
+	StopPlayerGuard(0.1f);
+}
+
+void ADongincheonCharacter::StartPlayerGuard()
+{
+	if (!IsValid(CombatComponent) || CombatComponent->IsGuardBroken() || !IsValid(GetMesh()) || !IsValid(GuardMontage))
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		return;
+	}
+
+	const float SafePlayRate = GuardPlayRate > 0.0f ? GuardPlayRate : 1.0f;
+
+	const float MontageLength =
+		AnimInstance->Montage_Play(GuardMontage,SafePlayRate);
+
+	if (MontageLength <= 0.0f)
+	{
+		return;
+	}
+
+	CombatComponent->BeginGuard();
+
+	ActiveGuardMontage = GuardMontage;
+
+	FOnMontageEnded MontageEndedDelegate;
+	MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleGuardMontageEnded);
+
+	AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveGuardMontage);
+}
+
+void ADongincheonCharacter::StopPlayerGuard(float BlendOutTime)
+{
+	UAnimMontage* MontageToStop = ActiveGuardMontage;
+	ActiveGuardMontage = nullptr;
+
+	if (IsValid(CombatComponent))
+	{
+		CombatComponent->EndGuard();
+	}
+
+	if (!IsValid(MontageToStop) || !IsValid(GetMesh()))
+	{
+		return;
+	}
+
+	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+	{
+		AnimInstance->Montage_Stop(FMath::Max(0.0f, BlendOutTime), MontageToStop);
+	}
+}
+
+void ADongincheonCharacter::HandleGuardMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	(void)bInterrupted;
+
+	if (!IsValid(Montage) || Montage != ActiveGuardMontage)
+	{
+		return;
+	}
+
+	ActiveGuardMontage = nullptr;
+
+	if (IsValid(CombatComponent))
+	{
+		CombatComponent->EndGuard();
+	}
+}
+
+void ADongincheonCharacter::StartPlayerGuardHitReact()
+{
+	if (!IsValid(GetMesh()) || !IsValid(GuardHitReactMontage))
+	{
+		return;
+	}
+	
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	
+	if (!IsValid(AnimInstance))
+	{
+		return;
+	}
+	
+	//기존 가드 루프를 끊고 액티브 가드 몽타주를 먼저 비워서 스탑으로 발생하는 몽타주엔디드가 가드 상태를 해제하지 못하게 한다.
+	if (IsValid(ActiveGuardMontage))
+	{
+		UAnimMontage* GuardLoopToStop = ActiveGuardMontage;
+		ActiveGuardMontage = nullptr;
+		
+		AnimInstance->Montage_Stop(0.05f, GuardLoopToStop);
+	}
+	
+	//이미 Guard Hit Reaction이 재생중이면 같은 Reaction 중복 안시킴
+	if (IsValid(ActiveGuardHitReactMontage))
+	{
+		return;
+	}
+	
+	const float MontageLength = AnimInstance->Montage_Play(GuardHitReactMontage, 1.0f);
+	
+	if (MontageLength <= 0.0f)
+	{
+		//재생을 실패했는데 Guard키를 계속 누르고 있다면 Guard Loop를 복구
+		if (bGuardInputHeld)
+		{
+			StartPlayerGuard();
+		}
+		
+		return;
+	}
+	
+	ActiveGuardHitReactMontage = GuardHitReactMontage;
+	
+	FOnMontageEnded MontageEndedDelegate;
+	
+	MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleGuardHitReactMontageEnded);
+	
+	AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveGuardHitReactMontage);
+}
+
+void ADongincheonCharacter::HandleGuardHitReactMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	(void)bInterrupted;
+	
+	if (!IsValid(Montage) || Montage != ActiveGuardHitReactMontage)
+	{
+		return;
+	}
+	
+	ActiveGuardHitReactMontage = nullptr;
+	
+	// Death -> 일반 HitReact로 넘어가는 중이면 Guard로 다시 복귀하면 안됨
+	if (!IsValid(HealthComponent) || HealthComponent->IsDead() || bPlayerDeathStarted || bPlayerHitReacting)
+	{
+		return;
+	}
+	
+	//Guard키를 계속 누르고 있으면 Gurad Loop로 복귀
+	if (bGuardInputHeld)
+	{
+		StartPlayerGuard();
+		return;
+	}
+	
+	//Guard키를 이미 똈다면 일반 상태로 복귀
+	if (IsValid(CombatComponent))
+	{
+		CombatComponent->EndGuard();
+	}
+}
+
+void ADongincheonCharacter::StartPlayerGuardBreak()
+{
+	if (!IsValid(CombatComponent) || !CombatComponent->IsGuardBroken() || !IsValid(GetMesh()))
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		CombatComponent->RecoverFromGuardBreak();
+		return;
+	}
+
+	if (IsValid(ActiveGuardMontage))
+	{
+		UAnimMontage* MontageToStop = ActiveGuardMontage;
+		ActiveGuardMontage = nullptr;
+		AnimInstance->Montage_Stop(0.05f, MontageToStop);
+	}
+
+	if (IsValid(ActiveGuardHitReactMontage))
+	{
+		UAnimMontage* MontageToStop = ActiveGuardHitReactMontage;
+		ActiveGuardHitReactMontage = nullptr;
+		AnimInstance->Montage_Stop(0.05f, MontageToStop);
+	}
+
+	if (!IsValid(GuardBreakMontage))
+	{
+		FinishPlayerGuardBreak();
+		return;
+	}
+
+	const float SafePlayRate = GuardBreakPlayRate > 0.0f ? GuardBreakPlayRate : 1.0f;
+
+	const float MontageLength = AnimInstance->Montage_Play( GuardBreakMontage,SafePlayRate);
+
+	if (MontageLength <= 0.0f)
+	{
+		FinishPlayerGuardBreak();
+		return;
+	}
+
+	ActiveGuardBreakMontage = GuardBreakMontage;
+
+	FOnMontageEnded MontageEndedDelegate;
+	MontageEndedDelegate.BindUObject(this, &ADongincheonCharacter::HandleGuardBreakMontageEnded);
+
+	AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate, ActiveGuardBreakMontage);
+}
+
+void ADongincheonCharacter::HandleGuardBreakMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	(void)bInterrupted;
+
+	if (!IsValid(Montage) || Montage != ActiveGuardBreakMontage)
+	{
+		return;
+	}
+
+	ActiveGuardBreakMontage = nullptr;
+
+	FinishPlayerGuardBreak();
+}
+
+void ADongincheonCharacter::FinishPlayerGuardBreak()
+{
+	if (!IsValid(CombatComponent))
+	{
+		return;
+	}
+
+	CombatComponent->RecoverFromGuardBreak();
+
+	if (bPlayerDeathStarted || !IsValid(HealthComponent) || HealthComponent->IsDead() || bPlayerHitReacting)
+	{
+		return;
+	}
+
+	if (bGuardInputHeld)
+	{
+		StartPlayerGuard();
+	}
+}
+
+
 //Hit React
 void ADongincheonCharacter::StartPlayerHitReact()
 {
@@ -323,6 +909,8 @@ void ADongincheonCharacter::StartPlayerHitReact()
 	}
 	
 	CancelPlayerAttack(0.05f);
+	CancelPlayerDodge(0.05f);
+	StopPlayerGuard(0.05f);
 	
 	if (!IsValid(GetMesh()))
 	{
@@ -438,6 +1026,8 @@ void ADongincheonCharacter::StartPlayerDeath()
 	bPlayerHitReacting = false;
 	
 	CancelPlayerAttack(0.0f);
+	CancelPlayerDodge(0.0f);
+	StopPlayerGuard(0.0f);
 	
 	if (IsValid(TargetingComponent))
 	{
@@ -538,6 +1128,38 @@ void ADongincheonCharacter::FinalizePlayerDeath()
 	{
 		Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
+}
+
+float ADongincheonCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent,
+	class AController* EventInstigator, AActor* DamageCauser)
+{
+	if (DamageAmount <= 0.0f)
+	{
+		return 0.0f;
+	}
+	
+	if (IsValid(CombatComponent))
+	{
+		const EGuardResult GuardResult =
+			CombatComponent->TryBlockDamage(DamageAmount, DamageCauser);
+
+		switch (GuardResult)
+		{
+		case EGuardResult::Blocked:
+			StartPlayerGuardHitReact();
+			return 0.0f;
+
+		case EGuardResult::GuardBroken:
+			StartPlayerGuardBreak();
+			return 0.0f;
+
+		case EGuardResult::NotBlocked:
+		default:
+			break;
+		}
+	}
+	
+	return Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 }
 
 //Hit Confirm Feedback

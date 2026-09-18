@@ -20,10 +20,11 @@ UCombatComponent::UCombatComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-void UCombatComponent::BeginAttack(float DamageAmount, float KnockbackStrength)
+void UCombatComponent::BeginAttack(float DamageAmount, float KnockbackStrength, bool bBreakGuard)
 {
 	ActiveDamageAmount = FMath::Max(0.0f,DamageAmount);
 	ActiveKnockbackStrength = FMath::Max(0.0f, KnockbackStrength);
+	bActiveAttackBreakGuard = bBreakGuard;
 	
 	HitActorThisAttack.Reset();
 	
@@ -36,8 +37,92 @@ void UCombatComponent::EndAttack()
 	
 	ActiveDamageAmount = 0.0f;
 	ActiveKnockbackStrength = 0.0f;
+	bActiveAttackBreakGuard = false;
 	
 	HitActorThisAttack.Reset();
+}
+
+// Guard LifeCycle
+void UCombatComponent::BeginGuard()
+{
+	if (bGuardBroken)
+	{
+		return;
+	}
+	
+	bGuardActive = true;
+}
+
+void UCombatComponent::EndGuard()
+{
+	bGuardActive = false;
+	
+}
+
+void UCombatComponent::RecoverFromGuardBreak()
+{
+	bGuardActive = false;
+	bGuardBroken = false;
+}
+
+EGuardResult UCombatComponent::TryBlockDamage(float IncomingDamage, AActor* DamageCauser)
+{
+	if (!bGuardActive || bGuardBroken || IncomingDamage <= 0.0f || !IsValid(DamageCauser))
+	{
+		return EGuardResult::NotBlocked;
+	}
+	
+	AActor* Owner = GetOwner();
+	
+	if (!IsValid(Owner))
+	{
+		return EGuardResult::NotBlocked;
+	}
+	
+	FVector DirectionToAttacker = DamageCauser->GetActorLocation() - Owner->GetActorLocation();
+	
+	DirectionToAttacker.Z = 0.0f;
+	
+	if (!DirectionToAttacker.Normalize())
+	{
+		return  EGuardResult::NotBlocked;
+	}
+	
+	FVector OwnerForward = Owner->GetActorForwardVector();
+	OwnerForward.Z = 0.0f;
+	
+	if (!OwnerForward.Normalize())
+	{
+		return EGuardResult::NotBlocked;
+	}
+	
+	const float FrontDot = FVector::DotProduct(OwnerForward, DirectionToAttacker);
+	
+	if (FrontDot < GuardFrontDotThreshold)
+	{
+		return EGuardResult::NotBlocked;
+	}
+	
+	bool bIncomingBreakGuard = false;
+	
+	if (const UCombatComponent* AttackerCombat = DamageCauser->FindComponentByClass<UCombatComponent>())
+	{
+		bIncomingBreakGuard = AttackerCombat->DoesActiveAttackBreakGuard();
+	}
+	
+	if (bIncomingBreakGuard)
+	{
+		bGuardActive = false;
+		bGuardBroken = true;
+		
+		OnGuardBroken.Broadcast(IncomingDamage,DamageCauser);
+		
+		return EGuardResult::GuardBroken;
+	}
+	
+	OnGuardHit.Broadcast(IncomingDamage,DamageCauser);
+	
+	return EGuardResult::Blocked;
 }
 
 // Hit Detection
