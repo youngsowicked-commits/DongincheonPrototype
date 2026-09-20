@@ -407,7 +407,7 @@ bool UCombatComponent::ProcessSocketHit(FName SocketName)
 			AppliedDamage = DealDamage(HitActor, ActiveDamageAmount);
 		}
 
-		if (ActiveKnockbackStrength > 0.0f)
+		if (AppliedDamage > 0.0f && ActiveKnockbackStrength > 0.0f)
 		{
 			ApplyKnockback(HitActor, ActiveKnockbackStrength);
 		}

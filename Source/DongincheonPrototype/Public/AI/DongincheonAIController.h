@@ -22,6 +22,7 @@ public:
 	
 	void SendHitReactEvent();
 	void SendDeadEvent();
+	void SendGuardBrokenEvent();
 	
 	UFUNCTION(BlueprintCallable, Category = "AI|StateTree")
 	void StartStateTreeLogic();

@@ -81,6 +81,16 @@ void ADongincheonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		EnhancedInput->BindAction(AttackAction, ETriggerEvent::Started, this, &ADongincheonCharacter::HandleAttackInput);
 	}
 	
+	if (IsValid(HeavyAttackAction))
+	{
+		EnhancedInput->BindAction(HeavyAttackAction,ETriggerEvent::Started,this,&ADongincheonCharacter::HandleHeavyAttackInput);
+	}
+	
+	if (IsValid(QTEAction))
+	{
+		EnhancedInput->BindAction(QTEAction,ETriggerEvent::Started,this,&ADongincheonCharacter::HandleQTEInput);
+	}
+	
 	if (IsValid(LockOnAction))
 	{
 		EnhancedInput->BindAction(LockOnAction,ETriggerEvent::Started,this,&ADongincheonCharacter::HandleLockOnStarted);
@@ -117,6 +127,16 @@ void ADongincheonCharacter::HandleLockOnEnded(const FInputActionValue& Value)
 	{
 		TargetingComponent->ClearLockOn();
 	}
+}
+
+void ADongincheonCharacter::HandleQTEInput()
+{
+	if (!IsValid(HealthComponent) || HealthComponent->IsDead() || bPlayerDeathStarted)
+	{
+		return;
+	}
+
+	OnQTEInputPressed.Broadcast();
 }
 
 void ADongincheonCharacter::HandleMoveInputStartedOrTriggered(const FInputActionValue& Value)
@@ -161,7 +181,7 @@ bool ADongincheonCharacter::IsMovementInputAllowed() const
 	return !bPlayerAttackActive && !bPlayerDodging && !bGuardLocked && !bPlayerHitReacting && !bPlayerDeathStarted;
 }
 
-void ADongincheonCharacter::SetPrentationInputLocked(bool blocked)
+void ADongincheonCharacter::SetPresentationInputLocked(bool blocked)
 {
 	if (bPresentationInputLocked == blocked)
 	{
@@ -211,38 +231,127 @@ void ADongincheonCharacter::HandleAttackInput()
 	{
 		return;
 	}
-	
+
 	if (!IsValid(HealthComponent) || !IsValid(CombatComponent))
 	{
 		return;
 	}
-	
-	if (HealthComponent->IsDead() || bPlayerDeathStarted || bPlayerHitReacting || bPlayerDodging || CombatComponent->IsGuarding() ||
-	CombatComponent->IsGuardBroken())
+
+	if (HealthComponent->IsDead() || bPlayerDeathStarted || bPlayerHitReacting || bPlayerDodging ||
+		CombatComponent->IsGuarding() || CombatComponent->IsGuardBroken())
 	{
 		return;
 	}
-	
-	if (ComboAttacks.IsEmpty())
-	{
-		return;
-	}
-	
-	//새 Combo 시작
+
+	// 새 Light Combo 시작
 	if (!bPlayerAttackActive)
 	{
+		if (ComboAttacks.IsEmpty())
+		{
+			return;
+		}
+
 		bPlayerAttackActive = true;
-		bComboQueued = false;
+
+		ActiveAttackMode = EPlayerAttackMode::LightCombo;
+		QueuedAttackType = EQueuedAttackType::None;
+
 		ActiveComboIndex = 0;
-		
+		ActiveHeavyBranchIndex = INDEX_NONE;
+		ActiveHeavyComboIndex = INDEX_NONE;
+
 		StartPlayerComboAttack();
 		return;
 	}
-	
-	//현재 Montage가 끝났을 떄 다음 타로 연결,
+
+	// Heavy 체인 중에는 LMB로 다시 Light로 돌아가지 않음
+	if (ActiveAttackMode != EPlayerAttackMode::LightCombo)
+	{
+		return;
+	}
+
+	// 이미 Heavy가 예약돼 있으면 Light가 덮어쓰지 않음
+	if (QueuedAttackType == EQueuedAttackType::Heavy)
+	{
+		return;
+	}
+
 	if (ActiveComboIndex + 1 < ComboAttacks.Num())
 	{
-		bComboQueued = true;
+		QueuedAttackType = EQueuedAttackType::Light;
+	}
+}
+
+void ADongincheonCharacter::HandleHeavyAttackInput()
+{
+	if (IsGameplayInputLocked())
+	{
+		return;
+	}
+
+	if (!IsValid(HealthComponent) || !IsValid(CombatComponent))
+	{
+		return;
+	}
+
+	if (HealthComponent->IsDead() || bPlayerDeathStarted || bPlayerHitReacting || bPlayerDodging ||
+		CombatComponent->IsGuarding() || CombatComponent->IsGuardBroken())
+	{
+		return;
+	}
+
+	// 아무 Light도 안 친 상태에서 RMB
+	if (!bPlayerAttackActive)
+	{
+		if (NeutralHeavyCombo.IsEmpty())
+		{
+			return;
+		}
+
+		bPlayerAttackActive = true;
+
+		ActiveAttackMode = EPlayerAttackMode::Heavy;
+		QueuedAttackType = EQueuedAttackType::None;
+
+		ActiveComboIndex = 0;
+		ActiveHeavyBranchIndex = INDEX_NONE;
+		ActiveHeavyComboIndex = 0;
+
+		StartPlayerHeavyComboAttack();
+		return;
+	}
+
+	// Light 도중 RMB -> 현재 Light 단계의 Heavy Branch 예약
+	if (ActiveAttackMode == EPlayerAttackMode::LightCombo)
+	{
+		if (!HeavyBranches.IsValidIndex(ActiveComboIndex))
+		{
+			return;
+		}
+
+		if (HeavyBranches[ActiveComboIndex].Attacks.IsEmpty())
+		{
+			return;
+		}
+
+		QueuedAttackType = EQueuedAttackType::Heavy;
+		return;
+	}
+
+	// 이미 Heavy Branch 안에 들어온 뒤 RMB -> 다음 Heavy
+	if (ActiveAttackMode == EPlayerAttackMode::Heavy)
+	{
+		const TArray<FAttackConfig>* HeavyCombo = GetActiveHeavyCombo();
+
+		if (!HeavyCombo)
+		{
+			return;
+		}
+
+		if (ActiveHeavyComboIndex + 1 < HeavyCombo->Num())
+		{
+			QueuedAttackType = EQueuedAttackType::Heavy;
+		}
 	}
 }
 
@@ -254,99 +363,174 @@ void ADongincheonCharacter::StartPlayerComboAttack()
 		ResetPlayerAttackState();
 		return;
 	}
-	
-	if (!IsValid(CombatComponent) || !IsValid(GetMesh()))
+
+	StartPlayerAttack(ComboAttacks[ActiveComboIndex]);
+}
+
+void ADongincheonCharacter::StartPlayerHeavyComboAttack()
+{
+	const TArray<FAttackConfig>* HeavyCombo = GetActiveHeavyCombo();
+
+	if (!HeavyCombo || !HeavyCombo->IsValidIndex(ActiveHeavyComboIndex))
 	{
 		ResetPlayerAttackState();
 		return;
 	}
-	
+
+	StartPlayerAttack((*HeavyCombo)[ActiveHeavyComboIndex]);
+}
+
+void ADongincheonCharacter::StartPlayerAttack(const FAttackConfig& Attack)
+{
+	if (!IsValid(CombatComponent) || !IsValid(GetMesh()) || !IsValid(Attack.Montage))
+	{
+		ResetPlayerAttackState();
+		return;
+	}
+
 	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-	
+
 	if (!IsValid(AnimInstance))
 	{
 		ResetPlayerAttackState();
 		return;
 	}
-	
-	const FAttackConfig& Attack = ComboAttacks[ActiveComboIndex];
-	
-	if (!IsValid(Attack.Montage))
-	{
-		ResetPlayerAttackState();
-		return;
-	}
-	
+
 	const float SafePlayRate = Attack.PlayRate > 0.0f ? Attack.PlayRate : 1.0f;
-	
-	CombatComponent->BeginAttack(Attack.Damage,Attack.KnockbackStrength);
-	
+
+	CombatComponent->BeginAttack(Attack.Damage,Attack.KnockbackStrength,Attack.bBreaksGuard);
+
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
 		Movement->StopMovementImmediately();
-		
+
 		if (Attack.LungeStrength > 0.0f)
 		{
-			const FVector LungeVelocity = GetActorForwardVector() * Attack.LungeStrength;
-			
-			Movement->AddImpulse(LungeVelocity, true);
+			Movement->AddImpulse(GetActorForwardVector() * Attack.LungeStrength,true);
 		}
 	}
-	
+
 	const float MontageLength = AnimInstance->Montage_Play(Attack.Montage,SafePlayRate,EMontagePlayReturnType::MontageLength,
-		0.0f,Attack.bStopAllMontages);
-	
-	if (MontageLength <= 0.0)
+			0.0f,Attack.bStopAllMontages);
+
+	if (MontageLength <= 0.0f)
 	{
 		ResetPlayerAttackState();
 		return;
 	}
-	
+
 	ActiveAttackMontage = Attack.Montage;
-	
+
 	FOnMontageEnded MontageEndedDelegate;
-	
-	MontageEndedDelegate.BindUObject(this, &ADongincheonCharacter::HandleAttackMontageEnded);
-	
+
+	MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleAttackMontageEnded);
+
 	AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveAttackMontage);
+}
+
+const TArray<FAttackConfig>* ADongincheonCharacter::GetActiveHeavyCombo() const
+{
+	// Light 없이 시작한 RMB 체인
+	if (ActiveHeavyBranchIndex == INDEX_NONE)
+	{
+		return &NeutralHeavyCombo;
+	}
+
+	// Light N타 후 들어온 Heavy Branch
+	if (!HeavyBranches.IsValidIndex(ActiveHeavyBranchIndex))
+	{
+		return nullptr;
+	}
+
+	return &HeavyBranches[ActiveHeavyBranchIndex].Attacks;
 }
 
 void ADongincheonCharacter::HandleAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	if (!IsValid(Montage) || Montage != ActiveAttackMontage)
-	{
-		return;
-	}
-	
-	ActiveAttackMontage = nullptr;
-	
-	ClearHitStop();
-	
-	if (IsValid(CombatComponent))
-	{
-		CombatComponent->EndAttack();
-	}
-	
-	if (bInterrupted || bPlayerHitReacting || bPlayerDeathStarted || (IsValid(HealthComponent) && HealthComponent->IsDead()))
-	{
-		bPlayerAttackActive = false;
-		bComboQueued = false;
-		ActiveComboIndex = 0;
-		return;
-	}
-	
-	if (bComboQueued && ActiveComboIndex + 1 < ComboAttacks.Num())
-	{
-		bComboQueued = false;
-		++ActiveComboIndex;
-		
-		StartPlayerComboAttack();
-		return;
-	}
-	
-	bPlayerAttackActive = false;
-	bComboQueued = false;
-	ActiveComboIndex = 0;
+	  if (!IsValid(Montage) || Montage != ActiveAttackMontage)
+    {
+        return;
+    }
+
+    ActiveAttackMontage = nullptr;
+
+    ClearHitStop();
+
+    if (IsValid(CombatComponent))
+    {
+        CombatComponent->EndAttack();
+    }
+
+    if (bInterrupted || bPlayerHitReacting || bPlayerDeathStarted || (IsValid(HealthComponent) && HealthComponent->IsDead()))
+    {
+        bPlayerAttackActive = false;
+        ActiveAttackMode = EPlayerAttackMode::None;
+        QueuedAttackType = EQueuedAttackType::None;
+
+        ActiveComboIndex = 0;
+        ActiveHeavyBranchIndex = INDEX_NONE;
+        ActiveHeavyComboIndex = INDEX_NONE;
+        return;
+    }
+
+    // Light Combo가 끝난 경우
+    if (ActiveAttackMode == EPlayerAttackMode::LightCombo)
+    {
+        // RMB가 예약되어 있으면 현재 Light 단계의 Heavy Branch로 진입
+        if (QueuedAttackType == EQueuedAttackType::Heavy)
+        {
+            if (HeavyBranches.IsValidIndex(ActiveComboIndex) && !HeavyBranches[ActiveComboIndex].Attacks.IsEmpty())
+            {
+                ActiveAttackMode = EPlayerAttackMode::Heavy;
+
+                ActiveHeavyBranchIndex = ActiveComboIndex;
+                ActiveHeavyComboIndex = 0;
+
+                QueuedAttackType = EQueuedAttackType::None;
+
+                StartPlayerHeavyComboAttack();
+                return;
+            }
+        }
+
+        // LMB가 예약되어 있으면 다음 Light
+        if (QueuedAttackType == EQueuedAttackType::Light && ActiveComboIndex + 1 < ComboAttacks.Num())
+        {
+            QueuedAttackType = EQueuedAttackType::None;
+
+            ++ActiveComboIndex;
+
+            StartPlayerComboAttack();
+            return;
+        }
+    }
+
+    // Heavy Combo가 끝난 경우
+    if (ActiveAttackMode == EPlayerAttackMode::Heavy && QueuedAttackType == EQueuedAttackType::Heavy)
+    {
+        const TArray<FAttackConfig>* HeavyCombo =
+            GetActiveHeavyCombo();
+
+        if (HeavyCombo &&
+            ActiveHeavyComboIndex + 1 < HeavyCombo->Num())
+        {
+            QueuedAttackType = EQueuedAttackType::None;
+
+            ++ActiveHeavyComboIndex;
+
+            StartPlayerHeavyComboAttack();
+            return;
+        }
+    }
+
+    // 더 이상 이어질 공격 없음
+    bPlayerAttackActive = false;
+    ActiveAttackMode = EPlayerAttackMode::None;
+    QueuedAttackType = EQueuedAttackType::None;
+
+    ActiveComboIndex = 0;
+    ActiveHeavyBranchIndex = INDEX_NONE;
+    ActiveHeavyComboIndex = INDEX_NONE;
 }
 
 void ADongincheonCharacter::CancelPlayerAttack(float BlendOutTime)
@@ -363,9 +547,14 @@ void ADongincheonCharacter::CancelPlayerAttack(float BlendOutTime)
 	}
 	
 	bPlayerAttackActive = false;
-	bComboQueued = false;
+
+	ActiveAttackMode = EPlayerAttackMode::None;
+	QueuedAttackType = EQueuedAttackType::None;
+
 	ActiveComboIndex = 0;
-	
+	ActiveHeavyBranchIndex = INDEX_NONE;
+	ActiveHeavyComboIndex = INDEX_NONE;
+
 	if (!IsValid(MontageToStop) || !IsValid(GetMesh()))
 	{
 		return;
@@ -393,8 +582,13 @@ void ADongincheonCharacter::ResetPlayerAttackState()
 	}
 	
 	bPlayerAttackActive = false;
-	bComboQueued = false;
+
+	ActiveAttackMode = EPlayerAttackMode::None;
+	QueuedAttackType = EQueuedAttackType::None;
+
 	ActiveComboIndex = 0;
+	ActiveHeavyBranchIndex = INDEX_NONE;
+	ActiveHeavyComboIndex = INDEX_NONE;
 }
 
 //Health
@@ -660,7 +854,8 @@ void ADongincheonCharacter::HandleGuardEnded()
 
 void ADongincheonCharacter::StartPlayerGuard()
 {
-	if (!IsValid(CombatComponent) || CombatComponent->IsGuardBroken() || !IsValid(GetMesh()) || !IsValid(GuardMontage))
+	if (!IsValid(CombatComponent) || CombatComponent->IsGuardBroken() || !IsValid(GetMesh()) 
+		|| !IsValid(GuardConfig.GuardMontage))
 	{
 		return;
 	}
@@ -672,10 +867,10 @@ void ADongincheonCharacter::StartPlayerGuard()
 		return;
 	}
 
-	const float SafePlayRate = GuardPlayRate > 0.0f ? GuardPlayRate : 1.0f;
+	const float SafePlayRate = GuardConfig.GuardPlayRate > 0.0f ? GuardConfig.GuardPlayRate : 1.0f;
 
 	const float MontageLength =
-		AnimInstance->Montage_Play(GuardMontage,SafePlayRate);
+		AnimInstance->Montage_Play(GuardConfig.GuardMontage,SafePlayRate);
 
 	if (MontageLength <= 0.0f)
 	{
@@ -684,7 +879,7 @@ void ADongincheonCharacter::StartPlayerGuard()
 
 	CombatComponent->BeginGuard();
 
-	ActiveGuardMontage = GuardMontage;
+	ActiveGuardMontage = GuardConfig.GuardMontage;
 
 	FOnMontageEnded MontageEndedDelegate;
 	MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleGuardMontageEnded);
@@ -732,7 +927,7 @@ void ADongincheonCharacter::HandleGuardMontageEnded(UAnimMontage* Montage, bool 
 
 void ADongincheonCharacter::StartPlayerGuardHitReact()
 {
-	if (!IsValid(GetMesh()) || !IsValid(GuardHitReactMontage))
+	if (!IsValid(GetMesh()) || !IsValid(GuardConfig.GuardHitReactMontage))
 	{
 		return;
 	}
@@ -759,7 +954,7 @@ void ADongincheonCharacter::StartPlayerGuardHitReact()
 		return;
 	}
 	
-	const float MontageLength = AnimInstance->Montage_Play(GuardHitReactMontage, 1.0f);
+	const float MontageLength = AnimInstance->Montage_Play(GuardConfig.GuardHitReactMontage, 1.0f);
 	
 	if (MontageLength <= 0.0f)
 	{
@@ -772,7 +967,7 @@ void ADongincheonCharacter::StartPlayerGuardHitReact()
 		return;
 	}
 	
-	ActiveGuardHitReactMontage = GuardHitReactMontage;
+	ActiveGuardHitReactMontage = GuardConfig.GuardHitReactMontage;
 	
 	FOnMontageEnded MontageEndedDelegate;
 	
@@ -841,15 +1036,15 @@ void ADongincheonCharacter::StartPlayerGuardBreak()
 		AnimInstance->Montage_Stop(0.05f, MontageToStop);
 	}
 
-	if (!IsValid(GuardBreakMontage))
+	if (!IsValid(GuardConfig.GuardBreakMontage))
 	{
 		FinishPlayerGuardBreak();
 		return;
 	}
 
-	const float SafePlayRate = GuardBreakPlayRate > 0.0f ? GuardBreakPlayRate : 1.0f;
+	const float SafePlayRate = GuardConfig.GuardBreakPlayRate > 0.0f ? GuardConfig.GuardBreakPlayRate : 1.0f;
 
-	const float MontageLength = AnimInstance->Montage_Play( GuardBreakMontage,SafePlayRate);
+	const float MontageLength = AnimInstance->Montage_Play( GuardConfig.GuardBreakMontage,SafePlayRate);
 
 	if (MontageLength <= 0.0f)
 	{
@@ -857,7 +1052,7 @@ void ADongincheonCharacter::StartPlayerGuardBreak()
 		return;
 	}
 
-	ActiveGuardBreakMontage = GuardBreakMontage;
+	ActiveGuardBreakMontage = GuardConfig.GuardBreakMontage;
 
 	FOnMontageEnded MontageEndedDelegate;
 	MontageEndedDelegate.BindUObject(this, &ADongincheonCharacter::HandleGuardBreakMontageEnded);
@@ -911,6 +1106,26 @@ void ADongincheonCharacter::StartPlayerHitReact()
 	CancelPlayerAttack(0.05f);
 	CancelPlayerDodge(0.05f);
 	StopPlayerGuard(0.05f);
+	
+	if (IsValid(ActiveGuardBreakMontage) && IsValid(GetMesh()))
+	{
+		if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+		{
+			UAnimMontage* GuardBreakToStop = ActiveGuardBreakMontage;
+
+			FOnMontageEnded EmptyEndDelegate;
+			AnimInstance->Montage_SetEndDelegate(EmptyEndDelegate,GuardBreakToStop);
+
+			ActiveGuardBreakMontage = nullptr;
+
+			AnimInstance->Montage_Stop(0.05f,GuardBreakToStop);
+		}
+
+		if (IsValid(CombatComponent))
+		{
+			CombatComponent->RecoverFromGuardBreak();
+		}
+	}
 	
 	if (!IsValid(GetMesh()))
 	{
@@ -1029,6 +1244,13 @@ void ADongincheonCharacter::StartPlayerDeath()
 	CancelPlayerDodge(0.0f);
 	StopPlayerGuard(0.0f);
 	
+	bGuardInputHeld = false;
+
+	if (IsValid(CombatComponent))
+	{
+		CombatComponent->RecoverFromGuardBreak();
+	}
+	
 	if (IsValid(TargetingComponent))
 	{
 		TargetingComponent->ClearLockOn();
@@ -1046,6 +1268,30 @@ void ADongincheonCharacter::StartPlayerDeath()
 	{
 		FinalizePlayerDeath();
 		return;
+	}
+	
+	if (IsValid(ActiveGuardHitReactMontage))
+	{
+		UAnimMontage* GuardHitToStop = ActiveGuardHitReactMontage;
+
+		FOnMontageEnded EmptyEndDelegate;
+		AnimInstance->Montage_SetEndDelegate(EmptyEndDelegate,GuardHitToStop);
+
+		ActiveGuardHitReactMontage = nullptr;
+
+		AnimInstance->Montage_Stop(0.0f,GuardHitToStop);
+	}
+
+	if (IsValid(ActiveGuardBreakMontage))
+	{
+		UAnimMontage* GuardBreakToStop = ActiveGuardBreakMontage;
+
+		FOnMontageEnded EmptyEndDelegate;
+		AnimInstance->Montage_SetEndDelegate(EmptyEndDelegate,GuardBreakToStop);
+
+		ActiveGuardBreakMontage = nullptr;
+
+		AnimInstance->Montage_Stop(0.0f,GuardBreakToStop);
 	}
 	
 	if (IsValid(ActiveHitReactMontage))

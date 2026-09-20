@@ -24,6 +24,119 @@ ADongincheonEnemyBase::ADongincheonEnemyBase()
 
 }
 
+float ADongincheonEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent,
+	class AController* EventInstigator, AActor* DamageCauser)
+{
+	if (DamageAmount <= 0.0f)
+	{
+		return 0.0f;
+	}
+	
+	if (IsValid(CombatComponent))
+	{
+		const EGuardResult GuardResult = CombatComponent->TryBlockDamage(DamageAmount, DamageCauser);
+		switch (GuardResult)
+		{
+		case EGuardResult::Blocked:
+			return 0.0f;
+			
+		case EGuardResult::GuardBroken:
+			return 0.0f;
+			
+		case EGuardResult::NotBlocked:
+		default:
+			break;
+		}
+	}
+	
+	return Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+}
+
+bool ADongincheonEnemyBase::StartGuard()
+{
+	if (!IsValid(EnemyDefinition) || !IsValid(CombatComponent))
+	{
+		return false;
+	}
+
+	if (HealthComponent && HealthComponent->IsDead())
+	{
+		return false;
+	}
+
+	if (CombatComponent->IsGuardBroken())
+	{
+		return false;
+	}
+
+	UAnimMontage* GuardMontage = EnemyDefinition->Guard.GuardMontage;
+
+	if (!IsValid(GuardMontage) || !IsValid(GetMesh()))
+	{
+		return false;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		return false;
+	}
+
+	const float SafePlayRate = EnemyDefinition->Guard.GuardPlayRate > 0.0f ? EnemyDefinition->Guard.GuardPlayRate : 1.0f;
+
+	const float MontageResult = AnimInstance->Montage_Play(GuardMontage,SafePlayRate);
+
+	if (MontageResult <= 0.0f)
+	{
+		return false;
+	}
+
+	CombatComponent->BeginGuard();
+
+	return CombatComponent->IsGuarding();
+}
+
+void ADongincheonEnemyBase::StopGuard()
+{
+	if (IsValid(CombatComponent))
+	{
+		CombatComponent->EndGuard();
+	}
+
+	if (!IsValid(EnemyDefinition) || !IsValid(GetMesh()))
+	{
+		return;
+	}
+
+	UAnimMontage* GuardMontage = EnemyDefinition->Guard.GuardMontage;
+
+	if (!IsValid(GuardMontage))
+	{
+		return;
+	}
+
+	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+	{
+		AnimInstance->Montage_Stop(0.1f,GuardMontage);
+	}
+}
+
+void ADongincheonEnemyBase::RecoverFromGuardBreak()
+{
+	if (!IsValid(CombatComponent))
+	{
+		return;
+	}
+
+	CombatComponent->RecoverFromGuardBreak();
+}
+
+bool ADongincheonEnemyBase::IsGuardActive() const
+{
+	return IsValid(CombatComponent) && CombatComponent->IsGuarding();
+}
+
 bool ADongincheonEnemyBase::StartAttack(int32 AttackIndex)
 {
 	if (!EnemyDefinition)
@@ -90,9 +203,16 @@ bool ADongincheonEnemyBase::StartAttack(int32 AttackIndex)
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
 		Movement->StopMovementImmediately();
+		
+		if (AttackConfig.LungeStrength > 0.0f)
+		{
+			const FVector LungeVelocity = GetActorForwardVector() * AttackConfig.LungeStrength;
+			
+			Movement->AddImpulse(LungeVelocity, true);
+		}
 	}
 	
-	CombatComponent->BeginAttack(AttackConfig.Damage, AttackConfig.KnockbackStrength);
+	CombatComponent->BeginAttack(AttackConfig.Damage, AttackConfig.KnockbackStrength, AttackConfig.bBreaksGuard);
 	
 	const float MontageResult = AnimInstance->Montage_Play(AttackConfig.Montage, AttackConfig.PlayRate,
 		EMontagePlayReturnType::MontageLength, 0.0f, AttackConfig.bStopAllMontages);
@@ -408,6 +528,11 @@ void ADongincheonEnemyBase::BeginPlay()
 
 		HealthComponent->OnDeath.AddUniqueDynamic(this, &ADongincheonEnemyBase::HandleHealthDeath);
 	}
+	
+	if (CombatComponent)
+	{
+		CombatComponent->OnGuardBroken.AddUniqueDynamic(this, &ADongincheonEnemyBase::HandleGuardBroken);
+	}
 }
 
 void ADongincheonEnemyBase::HandleHealthDamaged(float DamageAmount, AActor* DamageCauser)
@@ -456,6 +581,17 @@ void ADongincheonEnemyBase::HandleHealthDeath(AActor* DamageCauser)
 	}
 	
 	OnDeathPresentation(DamageCauser);
+}
+
+void ADongincheonEnemyBase::HandleGuardBroken(float BlockedDamage, AActor* DamageCauser)
+{
+	(void)BlockedDamage;
+	(void)DamageCauser;
+
+	if (ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController()))
+	{
+		AIController->SendGuardBrokenEvent();
+	}
 }
 
 // Called every frame

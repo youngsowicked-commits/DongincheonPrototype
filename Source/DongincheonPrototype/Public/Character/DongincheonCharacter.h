@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Gameplay/Data/DIAttackData.h"
+#include "Gameplay/Data/DIGuardData.h"
 #include "DongincheonCharacter.generated.h"
 
 class UHealthComponent;
@@ -25,6 +26,31 @@ enum class EPlayerDodgeDirection : uint8
 	Right
 };
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FPlayerQTEInputSignature);
+
+enum class EPlayerAttackMode : uint8
+{
+	None,
+	LightCombo,
+	Heavy
+};
+
+enum class EQueuedAttackType : uint8
+{
+	None,
+	Light,
+	Heavy
+};
+
+USTRUCT(BlueprintType)
+struct FPlayerHeavyComboBranch
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attack")
+	TArray<FAttackConfig> Attacks;
+};
+
 UCLASS()
 class DONGINCHEONPROTOTYPE_API ADongincheonCharacter : public ACharacter
 {
@@ -32,6 +58,9 @@ class DONGINCHEONPROTOTYPE_API ADongincheonCharacter : public ACharacter
 
 public:
 	ADongincheonCharacter();
+	
+	UPROPERTY(BlueprintAssignable, Category = "Player|QTE")
+	FPlayerQTEInputSignature OnQTEInputPressed;
 	
 	//Player Runtime Query
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
@@ -50,7 +79,7 @@ public:
 	bool IsMovementInputAllowed() const;
 	
 	UFUNCTION(BlueprintCallable, Category = "Player|Input")
-	void SetPrentationInputLocked(bool blocked);
+	void SetPresentationInputLocked(bool blocked);
 	
 	UFUNCTION(BlueprintCallable, Category = "Player|Input")
 	void SetInteractionInputLocked(bool bLocked);
@@ -73,6 +102,8 @@ protected:
 	//Input
 	void HandleLockOnStarted(const FInputActionValue& Value);
 	void HandleLockOnEnded(const FInputActionValue& Value);
+	
+	void HandleQTEInput();
 	
 	void HandleMoveInputStartedOrTriggered(const FInputActionValue& Value);
 	void HandleMoveInputCompleted(const FInputActionValue& Value);
@@ -125,7 +156,15 @@ protected:
 	//Attack
 	void HandleAttackInput();
 	
+	void HandleHeavyAttackInput();
+	
 	void StartPlayerComboAttack();
+	
+	void StartPlayerHeavyComboAttack();
+	
+	void StartPlayerAttack(const FAttackConfig& Attack);
+	
+	const TArray<FAttackConfig>* GetActiveHeavyCombo() const;
 	
 	void HandleAttackMontageEnded(UAnimMontage* Montage,bool bInterrupted);
 	
@@ -175,6 +214,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
 	TObjectPtr<UInputAction> AttackAction;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
+	TObjectPtr<UInputAction> HeavyAttackAction;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
+	TObjectPtr<UInputAction> QTEAction;
+	
 	//Move
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
 	TObjectPtr<UInputAction> MoveAction;
@@ -213,24 +258,21 @@ protected:
 	
 	//Guard Content
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Guard")
-	TObjectPtr<UAnimMontage> GuardMontage;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Guard")
-	TObjectPtr<UAnimMontage> GuardHitReactMontage;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Guard")
-	TObjectPtr<UAnimMontage> GuardBreakMontage;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Guard",
-		meta = (ClampMin = "0.01"))
-	float GuardBreakPlayRate = 1.0f;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Guard", meta = (ClampMin = "0.01"))
-	float GuardPlayRate = 1.0f;
+	FGuardConfig GuardConfig;
 	
 	//Attack Content
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack")
 	TArray<FAttackConfig> ComboAttacks;
+	
+	// RMB → RMB → RMB...
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack")
+	TArray<FAttackConfig> NeutralHeavyCombo;
+
+	// [0] = Light 1타 후 Heavy Chain
+	// [1] = Light 2타 후 Heavy Chain
+	// [2] = Light 3타 후 Heavy Chain ...
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack")
+	TArray<FPlayerHeavyComboBranch> HeavyBranches;
 	
 	//Hit React Content
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|HitReact")
@@ -275,8 +317,12 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
 	bool bPlayerAttackActive = false;
 	
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
-	bool bComboQueued = false;
+	EPlayerAttackMode ActiveAttackMode = EPlayerAttackMode::None;
+	
+	EQueuedAttackType QueuedAttackType = EQueuedAttackType::None;
+
+	int32 ActiveHeavyBranchIndex = INDEX_NONE;
+	int32 ActiveHeavyComboIndex = INDEX_NONE;
 	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
 	int32 ActiveComboIndex = 0;

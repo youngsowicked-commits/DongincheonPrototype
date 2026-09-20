@@ -24,7 +24,7 @@ public:
 	float KnockbackStrength = 0.0f;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attack")
-	bool bBreakGuard = false;
+	bool bBreaksGuard = false;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = "0.0"))
 	float LungeStrength = 0.0f;

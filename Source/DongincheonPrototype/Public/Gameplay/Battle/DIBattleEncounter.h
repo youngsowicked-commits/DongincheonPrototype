@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Character/DongincheonEnemyBase.h"
 #include "GameFramework/Actor.h"
+#include "Components/QTEComponent.h"
 #include "DIBattleEncounter.generated.h"
 
 class UBoxComponent;
@@ -45,6 +46,30 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle|Flow")
 	void ResumeCombatFromPresentation();
 	
+	UFUNCTION(BlueprintCallable, Category = "Battle|Presentation")
+    void StartMidFightPresentation();
+    
+    UFUNCTION(BlueprintCallable, Category = "Battle|Presentation")
+    void FinishMidFightPresentation(bool bOverallQTESucceeded);
+    
+    UFUNCTION(BlueprintPure, Category = "Battle|Presentation")
+    bool IsMidFightPresentationActive() const
+    {
+        return bMidFightPresentationActive;
+    }
+	
+	UFUNCTION(BlueprintCallable, Category = "Battle|QTE")
+	bool StartEncounterQTE(const FQTEConfig& Config);
+
+	UFUNCTION(BlueprintCallable, Category = "Battle|QTE")
+	void SubmitEncounterQTEPress();
+
+	UFUNCTION(BlueprintCallable, Category = "Battle|QTE")
+	void FailEncounterQTE();
+
+	UFUNCTION(BlueprintCallable, Category = "Battle|QTE")
+	void CancelEncounterQTE();
+	
 	UFUNCTION(BlueprintPure, Category = "Battle")
 	int32 GetAliveCount() const {return AliveCount;}
 	
@@ -85,6 +110,15 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Battle|Presentation")
 	void OnHealthTriggerActivated(FName TriggerId, float HealthNormalized);
 	
+	UFUNCTION(BlueprintImplementableEvent, Category = "Battle|Presentation")
+	void OnMidFightPresentationStarted();
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Battle|Presentation")
+	void OnMidFightPresentationFinished(bool bOverallQTESucceeded);
+	
+	UFUNCTION(BlueprintImplementableEvent, Category = "Battle|QTE")
+	void OnEncounterQTECompleted(FName QTEId, EQTEResult Result);
+	
 	//문 닫기, Combat State, 사운드, 연출 등은 Blueprint가 담당
 	
 	//Trigger가 발동 된 순간
@@ -118,6 +152,9 @@ private:
 	UPROPERTY(VisibleInstanceOnly, Category = "Battle|Runtime")
 	bool bCombatPausedForPresentation = false;
 	
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Battle|Presentation", meta = (AllowPrivateAccess = "true"))
+	bool bMidFightPresentationActive = false;
+	
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<ADongincheonEnemyBase>> SpawnedEnemies;
 	
@@ -125,10 +162,16 @@ private:
 	void HandleTriggerBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
 		int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Battle|QTE", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UQTEComponent> QTEComponent;
+	
 	TSet<int32> TriggeredHealthTriggerIndices;
 	
 	UFUNCTION()
 	void HandleEnemyHealthChanged(float OldHealth, float NewHealth, float MaxHealth);
+	
+	UFUNCTION()
+	void HandleQTECompleted(FName QTEId, EQTEResult Result);
 	
 	UFUNCTION()
 	void HandleEnemyDeath(AActor* DamageCauser);

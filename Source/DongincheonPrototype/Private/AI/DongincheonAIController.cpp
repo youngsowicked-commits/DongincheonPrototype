@@ -11,6 +11,7 @@ UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_HitReact,"StateTreeEvent.
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Dead,"StateTreeEvent.Enemy.Dead");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Presentation_Begin,"StateTreeEvent.Enemy.Presentation.Begin");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Presentation_End,"StateTreeEvent.Enemy.Presentation.End");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_GuardBroken, "StateTreeEvent.Enemy.GuardBroken");
 
 
 ADongincheonAIController::ADongincheonAIController()
@@ -101,6 +102,59 @@ void ADongincheonAIController::SendDeadEvent()
 	   Warning,
 	   TEXT("01B DEATH: Dead Event SENT"));
 }
+
+void ADongincheonAIController::SendGuardBrokenEvent()
+{
+	if (!StateTreeComponent)
+	{
+		UE_LOG(LogTemp, Error, TEXT("01B: StateTreeComponent NULL"));
+
+		return;
+	}
+	
+	const EStateTreeRunStatus RunStatus =
+	StateTreeComponent->GetStateTreeRunStatus();
+
+	const TCHAR* StatusText = TEXT("Unknown");
+
+	switch (RunStatus)
+	{
+	case EStateTreeRunStatus::Running:
+		StatusText = TEXT("Running");
+		break;
+
+	case EStateTreeRunStatus::Stopped:
+		StatusText = TEXT("Stopped");
+		break;
+
+	case EStateTreeRunStatus::Succeeded:
+		StatusText = TEXT("Succeeded");
+		break;
+
+	case EStateTreeRunStatus::Failed:
+		StatusText = TEXT("Failed");
+		break;
+
+	case EStateTreeRunStatus::Unset:
+		StatusText = TEXT("Unset");
+		break;
+	}
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("01B: GuardBreak - StateTree Status = %s"),
+		StatusText);
+
+	StateTreeComponent->SendStateTreeEvent(
+		FStateTreeEvent(TAG_StateTreeEvent_Enemy_GuardBroken));
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("01B: GuardBreak Event SENT"));
+}
+
 
 void ADongincheonAIController::OnPossess(APawn* InPawn)
 {

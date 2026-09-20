@@ -20,6 +20,8 @@ ADIBattleEncounter::ADIBattleEncounter()
 	
 	BattleTrigger = CreateDefaultSubobject<UBoxComponent>(TEXT("BattleTrigger"));
 	
+	QTEComponent = CreateDefaultSubobject<UQTEComponent>(TEXT("QTE"));
+	
 	SetRootComponent(BattleTrigger);
 	
 	BattleTrigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
@@ -35,6 +37,11 @@ void ADIBattleEncounter::BeginPlay()
 	Super::BeginPlay();
 	
 	BattleTrigger->OnComponentBeginOverlap.AddUniqueDynamic(this,&ADIBattleEncounter::HandleTriggerBeginOverlap);
+	
+	if (IsValid(QTEComponent))
+	{
+		QTEComponent->OnQTECompleted.AddUniqueDynamic(this, &ADIBattleEncounter::HandleQTECompleted);
+	}
 	
 	//게임 시작시 전투 Blocker 비활성화
 	SetBattleBlockerEnabled(false);
@@ -76,6 +83,11 @@ void ADIBattleEncounter::HandleEnemyHealthChanged(float OldHealth, float NewHeal
 	}
 }
 
+void ADIBattleEncounter::HandleQTECompleted(FName QTEId, EQTEResult Result)
+{
+	OnEncounterQTECompleted(QTEId, Result);
+}
+
 void ADIBattleEncounter::HandleTriggerBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
@@ -110,6 +122,7 @@ void ADIBattleEncounter::StartEncounter()
 	bCompleted = false;
 	bCombatStarted = false;
 	bCombatPausedForPresentation = false;
+	bMidFightPresentationActive = false;
 	
 	AliveCount = 0;
 	SpawnedEnemies.Reset();
@@ -200,7 +213,7 @@ void ADIBattleEncounter::PauseCombatForPresentation()
 	
 	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(UGameplayStatics::GetPlayerCharacter(this,0)))
 	{
-		Player->SetPrentationInputLocked(true);
+		Player->SetPresentationInputLocked(true);
 	}
 	
 	for (ADongincheonEnemyBase* Enemy : SpawnedEnemies)
@@ -261,10 +274,109 @@ void ADIBattleEncounter::ResumeCombatFromPresentation()
 	
 	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(UGameplayStatics::GetPlayerCharacter(this,0)))
 	{
-		Player->SetPrentationInputLocked(false);
+		Player->SetPresentationInputLocked(false);
 	}
 	
 	UE_LOG(LogDIBattleEncounter,Log,TEXT("Combat RESUMED from presentation: %s"), *GetName());
+}
+
+void ADIBattleEncounter::StartMidFightPresentation()
+{
+	if (!bCombatStarted || bCompleted || bMidFightPresentationActive)
+	{
+		return;
+	}
+
+	bMidFightPresentationActive = true;
+
+	PauseCombatForPresentation();
+
+	if (!bCombatPausedForPresentation)
+	{
+		bMidFightPresentationActive = false;
+		return;
+	}
+
+	UE_LOG(
+		LogDIBattleEncounter,
+		Log,
+		TEXT("MidFight Presentation START: %s"),
+		*GetName());
+
+	OnMidFightPresentationStarted();
+}
+
+void ADIBattleEncounter::FinishMidFightPresentation(bool bOverallQTESucceeded)
+{
+	if (!bMidFightPresentationActive)
+	{
+		return;
+	}
+
+	if (IsValid(QTEComponent) && QTEComponent->IsQTEActive())
+	{
+		QTEComponent->CancelQTE();
+	}
+
+	bMidFightPresentationActive = false;
+
+	UE_LOG(
+		LogDIBattleEncounter,
+		Log,
+		TEXT("MidFight Presentation FINISH: %s | OverallQTE=%s"),
+		*GetName(),
+		bOverallQTESucceeded
+			? TEXT("SUCCESS")
+			: TEXT("FAILED"));
+
+	OnMidFightPresentationFinished(bOverallQTESucceeded);
+
+	ResumeCombatFromPresentation();
+}
+
+bool ADIBattleEncounter::StartEncounterQTE(const FQTEConfig& Config)
+{
+	if (!IsValid(QTEComponent))
+	{
+		return false;
+	}
+
+	if (!bMidFightPresentationActive)
+	{
+		return false;
+	}
+
+	return QTEComponent->StartQTE(Config);
+}
+
+void ADIBattleEncounter::SubmitEncounterQTEPress()
+{
+	if (!IsValid(QTEComponent))
+	{
+		return;
+	}
+
+	QTEComponent->SubmitPress();
+}
+
+void ADIBattleEncounter::FailEncounterQTE()
+{
+	if (!IsValid(QTEComponent))
+	{
+		return;
+	}
+
+	QTEComponent->FailQTE();
+}
+
+void ADIBattleEncounter::CancelEncounterQTE()
+{
+	if (!IsValid(QTEComponent))
+	{
+		return;
+	}
+
+	QTEComponent->CancelQTE();
 }
 
 void ADIBattleEncounter::SpawnEnemies()

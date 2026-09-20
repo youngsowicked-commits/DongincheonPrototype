@@ -20,6 +20,8 @@ public:
 	// Sets default values for this character's properties
 	ADongincheonEnemyBase();
 	
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UHealthComponent> HealthComponent;
 	
@@ -37,15 +39,24 @@ public:
 		return bAutoStartStateTreeOnPossess;
 	}
 	
+	//Guard
+	bool StartGuard();
+	void StopGuard();
+	void RecoverFromGuardBreak();
+	bool IsGuardActive() const;
+	
+	//Attack
 	bool StartAttack(int32 AttackIndex);
 	bool IsAttackActive() const;
 	void FinishAttack();
 	void CancelAttack(float BlendOutTime = 0.1f);
 	
+	//Hit
 	bool StartHitReact();
 	bool IsHitReactActive() const;
 	void StopHitReact(float BlendOutTime = 0.1f);
 	
+	//Death
 	bool StartDeath();
 	bool InDeathActive() const;
 	
@@ -64,6 +75,9 @@ protected:
 	
 	UFUNCTION()
 	void HandleHealthDeath(AActor* DamageCauser);
+	
+	UFUNCTION()
+	void HandleGuardBroken(float BlockedDamage, AActor* DamageCauser);
 	
 	UFUNCTION(BlueprintImplementableEvent, Category = "Enemy|Presentation")
 	void OnDamagePresentation(float DamageAmount, AActor* DamageCauser);

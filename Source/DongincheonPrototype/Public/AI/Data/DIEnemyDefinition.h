@@ -7,6 +7,7 @@
 #include "Gameplay/Data/DIHitReactData.h"
 #include "Gameplay/Data/DIDeathData.h"
 #include "Gameplay/Data/DIAttackData.h"
+#include "Gameplay/Data/DIGuardData.h"
 #include "DIEnemyDefinition.generated.h"
 
 /**
@@ -38,6 +39,9 @@ public:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Hit React")
 	FHitReactConfig HitReact;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Guard")
+	FGuardConfig Guard;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Death")
 	FDeathConfig Death;
