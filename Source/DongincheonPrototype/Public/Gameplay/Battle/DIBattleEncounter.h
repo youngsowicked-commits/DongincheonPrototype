@@ -50,7 +50,7 @@ public:
     void StartMidFightPresentation();
     
     UFUNCTION(BlueprintCallable, Category = "Battle|Presentation")
-    void FinishMidFightPresentation(bool bOverallQTESucceeded);
+    void FinishMidFightPresentation();
     
     UFUNCTION(BlueprintPure, Category = "Battle|Presentation")
     bool IsMidFightPresentationActive() const
@@ -59,10 +59,10 @@ public:
     }
 	
 	UFUNCTION(BlueprintCallable, Category = "Battle|QTE")
-	bool StartEncounterQTE(const FQTEConfig& Config);
-
+	bool StartMidFightQTE();
+	
 	UFUNCTION(BlueprintCallable, Category = "Battle|QTE")
-	void SubmitEncounterQTEPress();
+	bool StartEncounterQTE(const FQTEConfig& Config);
 
 	UFUNCTION(BlueprintCallable, Category = "Battle|QTE")
 	void FailEncounterQTE();
@@ -107,14 +107,17 @@ protected:
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Flow")
 	TArray<FDIBattleHealthTrigger> HealthTriggers;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Battle|MidFight")
+	FName MidFightTriggerId = TEXT("BossMidFight");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Battle|MidFight")
+	FQTEConfig MidFightQTEConfig;
+	
 	UFUNCTION(BlueprintImplementableEvent, Category = "Battle|Presentation")
 	void OnHealthTriggerActivated(FName TriggerId, float HealthNormalized);
 	
 	UFUNCTION(BlueprintImplementableEvent, Category = "Battle|Presentation")
 	void OnMidFightPresentationStarted();
-
-	UFUNCTION(BlueprintImplementableEvent, Category = "Battle|Presentation")
-	void OnMidFightPresentationFinished(bool bOverallQTESucceeded);
 	
 	UFUNCTION(BlueprintImplementableEvent, Category = "Battle|QTE")
 	void OnEncounterQTECompleted(FName QTEId, EQTEResult Result);
@@ -155,6 +158,9 @@ private:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Battle|Presentation", meta = (AllowPrivateAccess = "true"))
 	bool bMidFightPresentationActive = false;
 	
+	UPROPERTY(VisibleInstanceOnly, Category = "Battle|Runtime")
+	bool bMidFightQTESucceeded = false;
+	
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<ADongincheonEnemyBase>> SpawnedEnemies;
 	
@@ -169,6 +175,9 @@ private:
 	
 	UFUNCTION()
 	void HandleEnemyHealthChanged(float OldHealth, float NewHealth, float MaxHealth);
+	
+	UFUNCTION()
+	void HandlePlayerQTEInputPressed(EQTEInputType InputType);
 	
 	UFUNCTION()
 	void HandleQTECompleted(FName QTEId, EQTEResult Result);

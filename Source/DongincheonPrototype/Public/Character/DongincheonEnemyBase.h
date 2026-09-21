@@ -44,6 +44,7 @@ public:
 	void StopGuard();
 	void RecoverFromGuardBreak();
 	bool IsGuardActive() const;
+	bool StartGuardBreakReaction();
 	
 	//Attack
 	bool StartAttack(int32 AttackIndex);
@@ -75,6 +76,9 @@ protected:
 	
 	UFUNCTION()
 	void HandleHealthDeath(AActor* DamageCauser);
+	
+	UFUNCTION()
+	void HandleGuardHit(float BlockedDamage,AActor* DamageCauser);
 	
 	UFUNCTION()
 	void HandleGuardBroken(float BlockedDamage, AActor* DamageCauser);

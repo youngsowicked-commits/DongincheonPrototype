@@ -34,13 +34,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Attack")
 	TArray<FAttackConfig> Attacks;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Animation|Attack")
 	TArray<FDIAttackPattern> AttackPatterns;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Hit React")
 	FHitReactConfig HitReact;
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Guard")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Guard")
 	FGuardConfig Guard;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Death")

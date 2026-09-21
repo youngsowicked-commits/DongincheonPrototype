@@ -94,6 +94,8 @@ EStateTreeRunStatus FDIAttackTask::EnterState(FStateTreeExecutionContext& Contex
 	
 	InstanceData.ActiveAttackSequece.Reset();
 	InstanceData.CurrentSequenceIndex = INDEX_NONE;
+	InstanceData.bIsReAiming = false;
+	InstanceData.ReAimElapsedTime = 0.0f;
 	
 	ADongincheonEnemyBase* Enemy = Cast<ADongincheonEnemyBase>(InstanceData.Pawn);
 	
@@ -146,8 +148,8 @@ EStateTreeRunStatus FDIAttackTask::EnterState(FStateTreeExecutionContext& Contex
 	UE_LOG(LogTemp,Log,TEXT("DI Attack Tast: Pattern Started | Enemy=%s | Hits=%d | FirstAttack=%d"),
 		*Enemy->GetName(), InstanceData.ActiveAttackSequece.Num(),FirstAttackIndex);
 	
-	if (!Enemy->StartAttack(InstanceData.AttackIndex))
-	{
+if (!Enemy->StartAttack(FirstAttackIndex))
+{
 		UE_LOG(LogTemp,Warning,TEXT("DI Attack Task : StartAttack failed | Enemy=%s | AttackIndex=%d"), 
 			*Enemy->GetName(), FirstAttackIndex);
 		
@@ -163,53 +165,160 @@ EStateTreeRunStatus FDIAttackTask::EnterState(FStateTreeExecutionContext& Contex
 EStateTreeRunStatus FDIAttackTask::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
+    ADongincheonEnemyBase* Enemy = Cast<ADongincheonEnemyBase>(InstanceData.Pawn);
+
+    if (!IsValid(Enemy))
+    {
+        return EStateTreeRunStatus::Failed;
+    }
+
+    // 1. 콤보 사이 ReAim 중
+    if (InstanceData.bIsReAiming)
+    {
+    	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("[COMBO_REAIM] ACTIVE | Enemy=%s | Step=%d | Time=%.3f"),
+		*Enemy->GetName(),
+		InstanceData.CurrentSequenceIndex,
+		InstanceData.ReAimElapsedTime);
+
+    	
+    	
+        if (!IsValid(InstanceData.Target))
+        {
+            return EStateTreeRunStatus::Failed;
+        }
+
+        if (!InstanceData.ActiveAttackSequece.IsValidIndex(InstanceData.CurrentSequenceIndex))
+        {
+            return EStateTreeRunStatus::Failed;
+        }
+
+        InstanceData.ReAimElapsedTime += DeltaTime;
+
+        FVector ToTarget = InstanceData.Target->GetActorLocation() - Enemy->GetActorLocation();
+
+        // 높이 차이는 무시
+        ToTarget.Z = 0.0f;
+
+        bool bFacingTarget = true;
+
+        if (!ToTarget.IsNearlyZero())
+        {
+            const float TargetYaw = ToTarget.Rotation().Yaw;
+
+            const FRotator CurrentRotation = Enemy->GetActorRotation();
+
+            const float YawDifference = FMath::Abs(FMath::FindDeltaAngleDegrees(CurrentRotation.Yaw,TargetYaw));
+        	
+        	UE_LOG(
+				LogTemp,
+				Warning,
+				TEXT("[COMBO_REAIM] ActorYaw=%.1f | TargetYaw=%.1f | Diff=%.1f"),
+				CurrentRotation.Yaw,
+				TargetYaw,
+				YawDifference);
+
+            bFacingTarget = YawDifference <= InstanceData.ComboReAimAcceptanceAngle;
+
+            // 아직 충분히 정면을 못 봤으면 조금씩 회전
+            if (!bFacingTarget)
+            {
+                FRotator TargetRotation = CurrentRotation;
+
+                TargetRotation.Yaw = TargetYaw;
+
+                const FRotator NewRotation = FMath::RInterpConstantTo(CurrentRotation,TargetRotation,DeltaTime,InstanceData.ComboReAimSpeed);
+
+                Enemy->SetActorRotation(NewRotation);
+            	UE_LOG(
+					LogTemp,
+					Warning,
+					TEXT("[COMBO_REAIM] ROTATE | NewYaw=%.1f"),
+					NewRotation.Yaw);
+            }
+        }
+
+        const bool bReAimTimedOut = InstanceData.ReAimElapsedTime >= InstanceData.ComboReAimMaxTime;
+
+        // 아직 각도도 안 맞았고 제한시간도 남았다면 다음 프레임에도 계속 ReAim
+        if (!bFacingTarget && !bReAimTimedOut)
+        {
+            return EStateTreeRunStatus::Running;
+        }
+
+        // ReAim 완료 → 다음 콤보 공격 시작
+        const int32 NextAttackIndex = InstanceData.ActiveAttackSequece[InstanceData.CurrentSequenceIndex];
+
+        InstanceData.bIsReAiming = false;
+        InstanceData.ReAimElapsedTime = 0.0f;
+
+        UE_LOG(
+            LogTemp,
+            Verbose,
+            TEXT(
+                "DI Attack Task: Combo ReAim Completed | Enemy=%s | Step=%d | AttackIndex=%d"),
+            *Enemy->GetName(),
+            InstanceData.CurrentSequenceIndex,
+            NextAttackIndex);
+
+        if (!Enemy->StartAttack(NextAttackIndex))
+        {
+            UE_LOG(
+                LogTemp,
+                Warning,
+                TEXT(
+                    "DI Attack Task: Combo StartAttack failed | Enemy=%s | AttackIndex=%d"),
+                *Enemy->GetName(),
+                NextAttackIndex);
+
+            InstanceData.ActiveAttackSequece.Reset();
+            InstanceData.CurrentSequenceIndex = INDEX_NONE;
+            InstanceData.bIsReAiming = false;
+            InstanceData.ReAimElapsedTime = 0.0f;
+
+            return EStateTreeRunStatus::Failed;
+        }
+
+        return EStateTreeRunStatus::Running;
+    }
+
+    // 2. 현재 공격이 아직 진행 중
+    if (Enemy->IsAttackActive())
+    {
+        return EStateTreeRunStatus::Running;
+    }
 	
-	ADongincheonEnemyBase* Enemy = Cast<ADongincheonEnemyBase>(InstanceData.Pawn);
+    // 3. 현재 한 타 종료
+    Enemy->FinishAttack();
+
+    ++InstanceData.CurrentSequenceIndex;
 	
-	if (!IsValid(Enemy))
-	{
-		return EStateTreeRunStatus::Failed;
-	}
-	
-	if (Enemy->IsAttackActive())
-	{
-		return EStateTreeRunStatus::Running;
-	}
-	
-	//현재 한 타 종료, ActiveAttackIndex를 먼저 정리
-	Enemy->FinishAttack();
-	
-	++InstanceData.CurrentSequenceIndex;
-	
-	//Pattern의 마지막 공격까지 모두 끝남.
-	if (!InstanceData.ActiveAttackSequece.IsValidIndex(InstanceData.CurrentSequenceIndex))
-	{
-		UE_LOG(LogTemp,Log,TEXT("DI Attack Tast: Pattern Completed | Enemy%s"), *Enemy->GetName());
-		
-		InstanceData.ActiveAttackSequece.Reset();
-		InstanceData.CurrentSequenceIndex = INDEX_NONE;
-		
-		return EStateTreeRunStatus::Succeeded;
-	}
-	
-	//다음 콤보 어택 시작
-	const int32 NextAttackIndex = InstanceData.ActiveAttackSequece[InstanceData.CurrentSequenceIndex];
-	
-	UE_LOG(LogTemp, Verbose, TEXT("DI Attack Task: Combo Next | Enemy%s | Step=%d | AttackIndex=%d"),
-		*Enemy->GetName(),InstanceData.CurrentSequenceIndex,NextAttackIndex);
-	
-	if (!Enemy->StartAttack(NextAttackIndex))
-	{
-		UE_LOG(LogTemp,Warning,TEXT("DI Attack Task: Combo StartAttack failed | Enemy=%s | AttackIndex=%d"),
-			*Enemy->GetName(),NextAttackIndex);
-		
-		InstanceData.ActiveAttackSequece.Reset();
-		InstanceData.CurrentSequenceIndex = INDEX_NONE;
-		
-		return EStateTreeRunStatus::Failed;
-	}
-	
-	return EStateTreeRunStatus::Running;
+    // 4. Pattern 전체 완료
+    if (!InstanceData.ActiveAttackSequece.IsValidIndex(
+            InstanceData.CurrentSequenceIndex))
+    {
+        UE_LOG(
+            LogTemp,
+            Log,
+            TEXT("DI Attack Task: Pattern Completed | Enemy=%s"),
+            *Enemy->GetName());
+
+        InstanceData.ActiveAttackSequece.Reset();
+        InstanceData.CurrentSequenceIndex = INDEX_NONE;
+        InstanceData.bIsReAiming = false;
+        InstanceData.ReAimElapsedTime = 0.0f;
+
+        return EStateTreeRunStatus::Succeeded;
+    }
+
+    // 5. 다음 공격이 존재함 : 즉시 StartAttack 하지 않고 ReAim 단계로 진입
+    InstanceData.bIsReAiming = true;
+    InstanceData.ReAimElapsedTime = 0.0f;
+
+    return EStateTreeRunStatus::Running;
 }
 
 void FDIAttackTask::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const

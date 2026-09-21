@@ -23,6 +23,12 @@ public:
 	void SendHitReactEvent();
 	void SendDeadEvent();
 	void SendGuardBrokenEvent();
+	AActor* GetCombatTarget() const
+	{
+		return CombatTarget.Get();
+	}
+	void MarkGuardUsed();
+	bool CanUseGuard(float CooldownDuration) const;
 	
 	UFUNCTION(BlueprintCallable, Category = "AI|StateTree")
 	void StartStateTreeLogic();
@@ -39,5 +45,7 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
 	TObjectPtr<UStateTreeAIComponent> StateTreeComponent;
 	
-	
+private:
+	TWeakObjectPtr<AActor> CombatTarget;
+	double LastGuardTime = -1.0;
 };

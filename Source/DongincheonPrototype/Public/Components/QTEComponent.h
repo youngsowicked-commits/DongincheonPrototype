@@ -6,11 +6,33 @@
 #include "QTEComponent.generated.h"
 
 UENUM(BlueprintType)
+enum class EQTEInputType : uint8
+{
+    None,
+    Light,
+    Heavy,
+    Dodge
+};
+
+UENUM(BlueprintType)
 enum class EQTEResult : uint8
 {
     Success,
     Failed,
     Cancelled
+};
+
+USTRUCT(BlueprintType)
+struct DONGINCHEONPROTOTYPE_API FQTEStep
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "QTE")
+    EQTEInputType InputType = EQTEInputType::None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "QTE",
+        meta = (ClampMin = "0.0"))
+    float TimeLimit = 1.0f;
 };
 
 USTRUCT(BlueprintType)
@@ -21,18 +43,13 @@ struct DONGINCHEONPROTOTYPE_API FQTEConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "QTE")
     FName QTEId = NAME_None;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "QTE", meta = (ClampMin = "1"))
-    int32 RequiredPressCount = 1;
-
-    // 0 = 시간 제한 없음
-    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category = "QTE",meta = (ClampMin = "0.0"))
-    float TimeLimit = 0.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "QTE")
+    TArray<FQTEStep> Steps;
 };
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FQTEStartedSignature,FName, QTEId,int32, RequiredPressCount);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FQTEStartedSignature,FName, QTEId,int32, RequiredInputCount);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FQTEProgressSignature,FName, QTEId,int32, CurrentPressCount,
-    int32, RequiredPressCount);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FQTEProgressSignature,FName, QTEId,int32, CurrentInputCount,int32, RequiredInputCount);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FQTECompletedSignature,FName, QTEId,EQTEResult, Result);
 
@@ -48,7 +65,7 @@ public:
     bool StartQTE(const FQTEConfig& Config);
 
     UFUNCTION(BlueprintCallable, Category = "QTE")
-    void SubmitPress();
+    void SubmitInput(EQTEInputType InputType);
 
     UFUNCTION(BlueprintCallable, Category = "QTE")
     void FailQTE();
@@ -69,22 +86,22 @@ public:
     }
 
     UFUNCTION(BlueprintPure, Category = "QTE")
-    int32 GetCurrentPressCount() const
+    int32 GetCurrentInputCount() const
     {
-        return CurrentPressCount;
+        return CurrentInputIndex;
     }
 
     UFUNCTION(BlueprintPure, Category = "QTE")
-    int32 GetRequiredPressCount() const
+    int32 GetRequiredInputCount() const
     {
-        return ActiveConfig.RequiredPressCount;
+        return ActiveConfig.Steps.Num();
     }
-    
+
     UFUNCTION(BlueprintPure, Category = "QTE")
-    float GetTimeLimit() const
-    {
-        return ActiveConfig.TimeLimit;
-    }
+    EQTEInputType GetExpectedInput() const;
+
+    UFUNCTION(BlueprintPure, Category = "QTE")
+    float GetTimeLimit() const;
 
     UFUNCTION(BlueprintPure, Category = "QTE")
     float GetRemainingTime() const;
@@ -103,15 +120,15 @@ protected:
 
 private:
     void CompleteQTE(EQTEResult Result);
-
     void HandleTimeout();
+    void StartCurrentStepTimer();
 
 private:
     bool bQTEActive = false;
 
     FQTEConfig ActiveConfig;
 
-    int32 CurrentPressCount = 0;
+    int32 CurrentInputIndex = 0;
 
     FTimerHandle QTETimeoutHandle;
 };

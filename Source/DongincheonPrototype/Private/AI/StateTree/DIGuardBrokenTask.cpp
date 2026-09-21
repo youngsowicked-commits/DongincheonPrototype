@@ -5,8 +5,7 @@
 #include "GameFramework/Pawn.h"
 #include "StateTreeExecutionContext.h"
 
-EStateTreeRunStatus FDIGuardBrokenTask::EnterState(
-	FStateTreeExecutionContext& Context,
+EStateTreeRunStatus FDIGuardBrokenTask::EnterState(FStateTreeExecutionContext& Context,
 	const FStateTreeTransitionResult& Transition) const
 {
 	(void)Transition;
@@ -15,8 +14,7 @@ EStateTreeRunStatus FDIGuardBrokenTask::EnterState(
 
 	InstanceData.ElapsedTime = 0.0f;
 
-	ADongincheonEnemyBase* Enemy =
-		Cast<ADongincheonEnemyBase>(InstanceData.Pawn);
+	ADongincheonEnemyBase* Enemy = Cast<ADongincheonEnemyBase>(InstanceData.Pawn);
 
 	if (!IsValid(Enemy))
 	{
@@ -24,6 +22,15 @@ EStateTreeRunStatus FDIGuardBrokenTask::EnterState(
 	}
 
 	Enemy->StopGuard();
+	
+	if (!Enemy->StartGuardBreakReaction())
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("DI GuardBroken Task: GuardBreak Montage failed | Enemy=%s"),
+			*Enemy->GetName());
+	}
 
 	if (UCharacterMovementComponent* Movement = Enemy->GetCharacterMovement())
 	{

@@ -15,6 +15,9 @@ struct FGuardConfig
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Guard")
 	TObjectPtr<UAnimMontage> GuardHitReactMontage = nullptr;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Guard", meta = (ClampMin = "0.0"))
+	float GuardHitRecoilStrength = 80.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Guard")
 	TObjectPtr<UAnimMontage> GuardBreakMontage = nullptr;

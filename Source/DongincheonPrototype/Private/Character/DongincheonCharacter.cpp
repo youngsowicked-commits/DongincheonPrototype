@@ -86,11 +86,6 @@ void ADongincheonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		EnhancedInput->BindAction(HeavyAttackAction,ETriggerEvent::Started,this,&ADongincheonCharacter::HandleHeavyAttackInput);
 	}
 	
-	if (IsValid(QTEAction))
-	{
-		EnhancedInput->BindAction(QTEAction,ETriggerEvent::Started,this,&ADongincheonCharacter::HandleQTEInput);
-	}
-	
 	if (IsValid(LockOnAction))
 	{
 		EnhancedInput->BindAction(LockOnAction,ETriggerEvent::Started,this,&ADongincheonCharacter::HandleLockOnStarted);
@@ -127,16 +122,6 @@ void ADongincheonCharacter::HandleLockOnEnded(const FInputActionValue& Value)
 	{
 		TargetingComponent->ClearLockOn();
 	}
-}
-
-void ADongincheonCharacter::HandleQTEInput()
-{
-	if (!IsValid(HealthComponent) || HealthComponent->IsDead() || bPlayerDeathStarted)
-	{
-		return;
-	}
-
-	OnQTEInputPressed.Broadcast();
 }
 
 void ADongincheonCharacter::HandleMoveInputStartedOrTriggered(const FInputActionValue& Value)
@@ -227,6 +212,12 @@ void ADongincheonCharacter::SetInteractionInputLocked(bool bLocked)
 //Attack Input
 void ADongincheonCharacter::HandleAttackInput()
 {
+	if (bPresentationInputLocked)
+	{
+		OnQTEInputPressed.Broadcast(EQTEInputType::Light);
+		return;
+	}
+
 	if (IsGameplayInputLocked())
 	{
 		return;
@@ -284,6 +275,12 @@ void ADongincheonCharacter::HandleAttackInput()
 
 void ADongincheonCharacter::HandleHeavyAttackInput()
 {
+	if (bPresentationInputLocked)
+	{
+		OnQTEInputPressed.Broadcast(EQTEInputType::Heavy);
+		return;
+	}
+
 	if (IsGameplayInputLocked())
 	{
 		return;
@@ -610,6 +607,12 @@ void ADongincheonCharacter::HandleHealthDeath(AActor* DamageCauser)
 //Dodge
 void ADongincheonCharacter::HandleDodgeInput()
 {
+	if (bPresentationInputLocked)
+	{
+		OnQTEInputPressed.Broadcast(EQTEInputType::Dodge);
+		return;
+	}
+
 	if (IsGameplayInputLocked())
 	{
 		return;
@@ -1386,27 +1389,49 @@ float ADongincheonCharacter::TakeDamage(float DamageAmount, struct FDamageEvent 
 	
 	if (IsValid(CombatComponent))
 	{
-		const EGuardResult GuardResult =
-			CombatComponent->TryBlockDamage(DamageAmount, DamageCauser);
+		const EGuardResult GuardResult = CombatComponent->TryBlockDamage(DamageAmount, DamageCauser);
 
 		switch (GuardResult)
 		{
 		case EGuardResult::Blocked:
-			StartPlayerGuardHitReact();
-			return 0.0f;
+			{
+				if (GuardConfig.GuardHitRecoilStrength > 0.0f)
+				{
+					FVector RecoilDirection = -GetActorForwardVector();
+
+					if (IsValid(DamageCauser))
+					{
+						RecoilDirection =
+							(GetActorLocation() - DamageCauser->GetActorLocation())
+							.GetSafeNormal2D();
+					}
+
+					if (UCharacterMovementComponent* Movement =
+						GetCharacterMovement())
+					{
+						Movement->AddImpulse(
+							RecoilDirection * GuardConfig.GuardHitRecoilStrength,
+							true);
+					}
+				}
+
+				StartPlayerGuardHitReact();
+				return 0.0f;
+			}
 
 		case EGuardResult::GuardBroken:
-			StartPlayerGuardBreak();
-			return 0.0f;
+				StartPlayerGuardBreak();
+				return 0.0f;
 
 		case EGuardResult::NotBlocked:
-		default:
-			break;
+				default:
+				break;
 		}
 	}
 	
 	return Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 }
+
 
 //Hit Confirm Feedback
 void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor, FVector HitLocation, FName HitSocketName,

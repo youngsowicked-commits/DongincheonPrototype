@@ -14,46 +14,68 @@ bool UQTEComponent::StartQTE(const FQTEConfig& Config)
         return false;
     }
 
-    ActiveConfig = Config;
-
-    ActiveConfig.RequiredPressCount = FMath::Max(1, Config.RequiredPressCount);
-
-    ActiveConfig.TimeLimit = FMath::Max(0.0f, Config.TimeLimit);
-
-    CurrentPressCount = 0;
-    bQTEActive = true;
-
-    if (ActiveConfig.TimeLimit > 0.0f)
+    if (Config.Steps.IsEmpty())
     {
-        if (UWorld* World = GetWorld())
+        return false;
+    }
+
+    for (const FQTEStep& Step : Config.Steps)
+    {
+        if (Step.InputType == EQTEInputType::None)
         {
-            World->GetTimerManager().SetTimer(QTETimeoutHandle,this,&UQTEComponent::HandleTimeout,
-                ActiveConfig.TimeLimit,false);
+            return false;
         }
     }
 
-    OnQTEStarted.Broadcast(ActiveConfig.QTEId,ActiveConfig.RequiredPressCount);
+    ActiveConfig = Config;
+
+    for (FQTEStep& Step : ActiveConfig.Steps)
+    {
+        Step.TimeLimit = FMath::Max(0.0f, Step.TimeLimit);
+    }
+
+    CurrentInputIndex = 0;
+    bQTEActive = true;
+
+    StartCurrentStepTimer();
+
+    OnQTEStarted.Broadcast(ActiveConfig.QTEId,ActiveConfig.Steps.Num());
 
     return true;
 }
 
-void UQTEComponent::SubmitPress()
+void UQTEComponent::SubmitInput(EQTEInputType InputType)
 {
     if (!bQTEActive)
     {
         return;
     }
 
-    ++CurrentPressCount;
+    if (!ActiveConfig.Steps.IsValidIndex(CurrentInputIndex))
+    {
+        CompleteQTE(EQTEResult::Failed);
+        return;
+    }
 
-    CurrentPressCount = FMath::Min(CurrentPressCount,ActiveConfig.RequiredPressCount);
+    const EQTEInputType ExpectedInput = ActiveConfig.Steps[CurrentInputIndex].InputType;
 
-    OnQTEProgress.Broadcast(ActiveConfig.QTEId,CurrentPressCount,ActiveConfig.RequiredPressCount);
+    if (InputType != ExpectedInput)
+    {
+        CompleteQTE(EQTEResult::Failed);
+        return;
+    }
 
-    if (CurrentPressCount >= ActiveConfig.RequiredPressCount)
+    ++CurrentInputIndex;
+
+    OnQTEProgress.Broadcast(ActiveConfig.QTEId,CurrentInputIndex,ActiveConfig.Steps.Num());
+
+    if (CurrentInputIndex >= ActiveConfig.Steps.Num())
     {
         CompleteQTE(EQTEResult::Success);
+        return;
     }
+
+    StartCurrentStepTimer();
 }
 
 void UQTEComponent::FailQTE()
@@ -86,6 +108,37 @@ void UQTEComponent::HandleTimeout()
     CompleteQTE(EQTEResult::Failed);
 }
 
+void UQTEComponent::StartCurrentStepTimer()
+{
+    UWorld* World = GetWorld();
+
+    if (!IsValid(World))
+    {
+        return;
+    }
+
+    World->GetTimerManager().ClearTimer(QTETimeoutHandle);
+
+    if (!bQTEActive)
+    {
+        return;
+    }
+
+    if (!ActiveConfig.Steps.IsValidIndex(CurrentInputIndex))
+    {
+        return;
+    }
+
+    const float StepTimeLimit = ActiveConfig.Steps[CurrentInputIndex].TimeLimit;
+
+    if (StepTimeLimit <= 0.0f)
+    {
+        return;
+    }
+
+    World->GetTimerManager().SetTimer(QTETimeoutHandle,this,&UQTEComponent::HandleTimeout,StepTimeLimit,false);
+}
+
 void UQTEComponent::CompleteQTE(EQTEResult Result)
 {
     if (!bQTEActive)
@@ -101,11 +154,42 @@ void UQTEComponent::CompleteQTE(EQTEResult Result)
     }
 
     bQTEActive = false;
-
-    OnQTECompleted.Broadcast(CompletedQTEId,Result);
-
     ActiveConfig = FQTEConfig();
-    CurrentPressCount = 0;
+    CurrentInputIndex = 0;
+
+    OnQTECompleted.Broadcast(
+        CompletedQTEId,
+        Result);
+}
+
+EQTEInputType UQTEComponent::GetExpectedInput() const
+{
+    if (!bQTEActive)
+    {
+        return EQTEInputType::None;
+    }
+
+    if (!ActiveConfig.Steps.IsValidIndex(CurrentInputIndex))
+    {
+        return EQTEInputType::None;
+    }
+
+    return ActiveConfig.Steps[CurrentInputIndex].InputType;
+}
+
+float UQTEComponent::GetTimeLimit() const
+{
+    if (!bQTEActive)
+    {
+        return 0.0f;
+    }
+
+    if (!ActiveConfig.Steps.IsValidIndex(CurrentInputIndex))
+    {
+        return 0.0f;
+    }
+
+    return ActiveConfig.Steps[CurrentInputIndex].TimeLimit;
 }
 
 float UQTEComponent::GetRemainingTime() const
@@ -115,7 +199,12 @@ float UQTEComponent::GetRemainingTime() const
         return 0.0f;
     }
 
-    if (ActiveConfig.TimeLimit <= 0.0f)
+    if (!ActiveConfig.Steps.IsValidIndex(CurrentInputIndex))
+    {
+        return 0.0f;
+    }
+
+    if (ActiveConfig.Steps[CurrentInputIndex].TimeLimit <= 0.0f)
     {
         return 0.0f;
     }
@@ -140,6 +229,8 @@ void UQTEComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
     }
 
     bQTEActive = false;
+    ActiveConfig = FQTEConfig();
+    CurrentInputIndex = 0;
 
     Super::EndPlay(EndPlayReason);
 }

@@ -13,6 +13,11 @@ struct DONGINCHEONPROTOTYPE_API FDIGuardTaskInstanceData
 	
 	UPROPERTY(EditAnywhere, Category = "Context")
 	TObjectPtr<APawn> Pawn = nullptr;
+	
+	UPROPERTY(EditAnywhere, Category = "Guard", meta = (ClampMin = "0.0"))
+	float GuardDuration = 0.9f;
+
+	float ElapsedTime = 0.0f;
 };
 
 USTRUCT(meta = (DisplayName = "DI Guard"))

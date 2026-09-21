@@ -8,6 +8,7 @@
 #include "Components/CapsuleComponent.h"
 #include "AI/DongincheonAIController.h"
 #include "AI/Data/DIEnemyDefinition.h"
+#include "AI/DongincheonAIController.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -21,6 +22,15 @@ ADongincheonEnemyBase::ADongincheonEnemyBase()
 	
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
 	CombatComponent = CreateDefaultSubobject<UCombatComponent>(TEXT("Combat"));
+	
+	bUseControllerRotationYaw = false;
+
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->bOrientRotationToMovement = false;
+		Movement->bUseControllerDesiredRotation = true;
+		Movement->RotationRate = FRotator(0.0f, 540.0f, 0.0f);
+	}
 
 }
 
@@ -54,6 +64,32 @@ float ADongincheonEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent 
 
 bool ADongincheonEnemyBase::StartGuard()
 {
+	UE_LOG(LogTemp, Warning, TEXT("[GUARD] StartGuard CALLED"));
+	
+	if (AAIController* AIController = Cast<AAIController>(GetController()))
+	{
+		AActor* FocusActor = AIController->GetFocusActor();
+
+		float TargetYaw = GetActorRotation().Yaw;
+
+		if (IsValid(FocusActor))
+		{
+			TargetYaw =
+				(FocusActor->GetActorLocation() - GetActorLocation())
+				.Rotation()
+				.Yaw;
+		}
+
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[FACING] Guard | Focus=%s | ActorYaw=%.1f | ControlYaw=%.1f | TargetYaw=%.1f"),
+			*GetNameSafe(FocusActor),
+			GetActorRotation().Yaw,
+			AIController->GetControlRotation().Yaw,
+			TargetYaw);
+	}
+	
 	if (!IsValid(EnemyDefinition) || !IsValid(CombatComponent))
 	{
 		return false;
@@ -93,6 +129,14 @@ bool ADongincheonEnemyBase::StartGuard()
 	}
 
 	CombatComponent->BeginGuard();
+	
+	UE_LOG(
+	LogTemp,
+	Warning,
+	TEXT("[GUARD] MontageResult=%.2f IsGuarding=%s"),
+	MontageResult,
+	CombatComponent->IsGuarding() ? TEXT("TRUE") : TEXT("FALSE")
+);
 
 	return CombatComponent->IsGuarding();
 }
@@ -135,6 +179,46 @@ void ADongincheonEnemyBase::RecoverFromGuardBreak()
 bool ADongincheonEnemyBase::IsGuardActive() const
 {
 	return IsValid(CombatComponent) && CombatComponent->IsGuarding();
+}
+
+bool ADongincheonEnemyBase::StartGuardBreakReaction()
+{
+	if (!IsValid(EnemyDefinition) || !IsValid(GetMesh()))
+	{
+		return false;
+	}
+
+	UAnimMontage* GuardBreakMontage = EnemyDefinition->Guard.GuardBreakMontage;
+
+	if (!IsValid(GuardBreakMontage))
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("GuardBreak failed: GuardBreakMontage is null on %s"),
+			*GetName());
+
+		return false;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		return false;
+	}
+
+	const float SafePlayRate = EnemyDefinition->Guard.GuardBreakPlayRate > 0.0f ? EnemyDefinition->Guard.GuardBreakPlayRate : 1.0f;
+
+	const float MontageResult = AnimInstance->Montage_Play(GuardBreakMontage,SafePlayRate);
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("[GUARD_BREAK] MontageResult=%.2f"),
+		MontageResult);
+
+	return MontageResult > 0.0f;
 }
 
 bool ADongincheonEnemyBase::StartAttack(int32 AttackIndex)
@@ -195,7 +279,7 @@ bool ADongincheonEnemyBase::StartAttack(int32 AttackIndex)
 		return false;
 	}
 	
-	if (AAIController* AIController = Cast<AAIController>(GetController()))
+	if (ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController()))
 	{
 		AIController->StopMovement();
 	}
@@ -531,6 +615,7 @@ void ADongincheonEnemyBase::BeginPlay()
 	
 	if (CombatComponent)
 	{
+		CombatComponent->OnGuardHit.AddUniqueDynamic(this, &ADongincheonEnemyBase::HandleGuardHit);
 		CombatComponent->OnGuardBroken.AddUniqueDynamic(this, &ADongincheonEnemyBase::HandleGuardBroken);
 	}
 }
@@ -581,6 +666,46 @@ void ADongincheonEnemyBase::HandleHealthDeath(AActor* DamageCauser)
 	}
 	
 	OnDeathPresentation(DamageCauser);
+}
+
+void ADongincheonEnemyBase::HandleGuardHit(float BlockedDamage, AActor* DamageCauser)
+{
+	(void)BlockedDamage;
+	(void)DamageCauser;
+
+	if (!IsValid(EnemyDefinition) || !IsValid(GetMesh()))
+	{
+		return;
+	}
+
+	UAnimMontage* GuardHitMontage = EnemyDefinition->Guard.GuardHitReactMontage;
+
+	if (!IsValid(GuardHitMontage))
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[GUARD_HIT] GuardHitReactMontage is null | Enemy=%s"),
+			*GetName());
+
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		return;
+	}
+
+	const float MontageResult = AnimInstance->Montage_Play(GuardHitMontage,1.0f);
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("[GUARD_HIT] MontageResult=%.2f | Enemy=%s"),
+		MontageResult,
+		*GetName());
 }
 
 void ADongincheonEnemyBase::HandleGuardBroken(float BlockedDamage, AActor* DamageCauser)

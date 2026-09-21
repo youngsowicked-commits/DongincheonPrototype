@@ -6,6 +6,7 @@
 #include "GameFramework/Character.h"
 #include "Gameplay/Data/DIAttackData.h"
 #include "Gameplay/Data/DIGuardData.h"
+#include "Components/QTEComponent.h"
 #include "DongincheonCharacter.generated.h"
 
 class UHealthComponent;
@@ -26,8 +27,7 @@ enum class EPlayerDodgeDirection : uint8
 	Right
 };
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FPlayerQTEInputSignature);
-
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPlayerQTEInputSignature,EQTEInputType,InputType);
 enum class EPlayerAttackMode : uint8
 {
 	None,
@@ -102,8 +102,6 @@ protected:
 	//Input
 	void HandleLockOnStarted(const FInputActionValue& Value);
 	void HandleLockOnEnded(const FInputActionValue& Value);
-	
-	void HandleQTEInput();
 	
 	void HandleMoveInputStartedOrTriggered(const FInputActionValue& Value);
 	void HandleMoveInputCompleted(const FInputActionValue& Value);
@@ -216,9 +214,6 @@ protected:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
 	TObjectPtr<UInputAction> HeavyAttackAction;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
-	TObjectPtr<UInputAction> QTEAction;
 	
 	//Move
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")

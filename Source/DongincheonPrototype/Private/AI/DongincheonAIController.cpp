@@ -6,6 +6,7 @@
 #include "Components/StateTreeAIComponent.h"
 #include "NativeGameplayTags.h"
 #include "StateTreeEvents.h"
+#include "Kismet/GameplayStatics.h"
 
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_HitReact,"StateTreeEvent.Enemy.HitReact");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Dead,"StateTreeEvent.Enemy.Dead");
@@ -155,10 +156,50 @@ void ADongincheonAIController::SendGuardBrokenEvent()
 		TEXT("01B: GuardBreak Event SENT"));
 }
 
+void ADongincheonAIController::MarkGuardUsed()
+{
+	const UWorld* World = GetWorld();
+
+	if (!IsValid(World))
+	{
+		return;
+	}
+
+	LastGuardTime = World->GetTimeSeconds();
+}
+
+bool ADongincheonAIController::CanUseGuard(float CooldownDuration) const
+{
+	if (CooldownDuration <= 0.0f)
+	{
+		return true;
+	}
+
+	if (LastGuardTime < 0.0)
+	{
+		return true;
+	}
+
+	const UWorld* World = GetWorld();
+
+	if (!IsValid(World))
+	{
+		return false;
+	}
+
+	const double CurrentTime = World->GetTimeSeconds();
+	const double ElapsedTime = CurrentTime - LastGuardTime;
+
+	return ElapsedTime >= static_cast<double>(CooldownDuration);
+}
+
 
 void ADongincheonAIController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
+	
+	CombatTarget.Reset();
+	LastGuardTime = -1.0;
 	
 	if (!IsValid(InPawn))
 	{
@@ -197,6 +238,23 @@ void ADongincheonAIController::StartStateTreeLogic()
 		
 		return;
 	}
+	
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0);
+
+	if (IsValid(PlayerPawn))
+	{
+		CombatTarget = PlayerPawn;
+		
+		SetFocus(PlayerPawn);
+
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("01B: Combat Focus SET | Pawn=%s | Target=%s"),
+			*GetNameSafe(GetPawn()),
+			*GetNameSafe(CombatTarget.Get()));
+	}
+	
 	UE_LOG(
 		LogTemp,
 		Warning,
