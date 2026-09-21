@@ -8,7 +8,11 @@ public class DongincheonPrototype : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "StateTreeModule" });
+		PublicDependencyModuleNames.AddRange(new string[]
+		{
+			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "StateTreeModule", "UMG" 
+			
+		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] 
 		{

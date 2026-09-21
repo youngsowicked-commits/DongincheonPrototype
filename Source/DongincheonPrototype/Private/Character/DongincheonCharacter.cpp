@@ -10,6 +10,7 @@
 #include "Components/CombatComponent.h"
 #include "Components/TargetingComponent.h"
 #include "Components/HealthComponent.h"
+#include "Components/DIGrabComponent.h"
 #include "Components/InteractionComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "EnhancedInputComponent.h"
@@ -25,6 +26,7 @@ ADongincheonCharacter::ADongincheonCharacter()
 	
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
 	CombatComponent = CreateDefaultSubobject<UCombatComponent>(TEXT("Combat"));
+	GrabComponent = CreateDefaultSubobject<UDIGrabComponent>(TEXT("GrabComponent"));
 	TargetingComponent = CreateDefaultSubobject<UTargetingComponent>(TEXT("Targeting"));
 }
 
@@ -84,6 +86,11 @@ void ADongincheonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 	if (IsValid(HeavyAttackAction))
 	{
 		EnhancedInput->BindAction(HeavyAttackAction,ETriggerEvent::Started,this,&ADongincheonCharacter::HandleHeavyAttackInput);
+	}
+	
+	if (IsValid(GrabAction))
+	{
+		EnhancedInput->BindAction(GrabAction,ETriggerEvent::Started,this,&ADongincheonCharacter::HandleGrabInput);
 	}
 	
 	if (IsValid(LockOnAction))
@@ -632,6 +639,26 @@ void ADongincheonCharacter::HandleDodgeInput()
 	StartPlayerDodge();
 }
 
+void ADongincheonCharacter::HandleGrabInput()
+{
+	if (IsGameplayInputLocked())
+	{
+		return;
+	}
+
+	if (!IsValid(HealthComponent) || !IsValid(GrabComponent))
+	{
+		return;
+	}
+
+	if (HealthComponent->IsDead() || bPlayerDeathStarted || bPlayerHitReacting || bPlayerDodging)
+	{
+		return;
+	}
+
+	// Actual Grab / Release orchestration is added next.
+}
+
 void ADongincheonCharacter::StartPlayerDodge()
 {
 	if (!IsValid(GetMesh()))
@@ -797,19 +824,20 @@ void ADongincheonCharacter::ResetPlayerDodgeState()
 //Guard
 void ADongincheonCharacter::HandleGuardStarted()
 {
-	if (!IsValid(HealthComponent) ||
-		HealthComponent->IsDead() ||
-		!IsValid(CombatComponent))
+	if (bPresentationInputLocked)
+	{
+		OnQTEInputPressed.Broadcast(EQTEInputType::Guard);
+		return;
+	}
+	
+	if (!IsValid(HealthComponent) || HealthComponent->IsDead() || !IsValid(CombatComponent))
 	{
 		return;
 	}
 
 	bGuardInputHeld = true;
 
-	if (bPlayerDeathStarted ||
-		bPlayerHitReacting ||
-		bPlayerDodging ||
-		bPlayerAttackActive ||
+	if (bPlayerDeathStarted || bPlayerHitReacting || bPlayerDodging || bPlayerAttackActive ||
 		CombatComponent->IsGuardBroken())
 	{
 		return;

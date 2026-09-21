@@ -2,6 +2,8 @@
 
 #include "Engine/World.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogDIQTE, Log, All);
+
 UQTEComponent::UQTEComponent()
 {
     PrimaryComponentTick.bCanEverTick = false;
@@ -11,28 +13,66 @@ bool UQTEComponent::StartQTE(const FQTEConfig& Config)
 {
     if (bQTEActive)
     {
+        UE_LOG(
+            LogDIQTE,
+            Warning,
+            TEXT("StartQTE FAILED | Another QTE is already active"));
+
+        return false;
+    }
+
+    if (Config.QTEId.IsNone())
+    {
+        UE_LOG(
+            LogDIQTE,
+            Error,
+            TEXT("StartQTE FAILED | QTEId is None"));
+
         return false;
     }
 
     if (Config.Steps.IsEmpty())
     {
+        UE_LOG(
+            LogDIQTE,
+            Error,
+            TEXT("StartQTE FAILED | Id=%s | Steps are empty"),
+            *Config.QTEId.ToString());
+
         return false;
     }
 
-    for (const FQTEStep& Step : Config.Steps)
+    for (int32 Index = 0; Index < Config.Steps.Num(); ++Index)
     {
+        const FQTEStep& Step = Config.Steps[Index];
+
         if (Step.InputType == EQTEInputType::None)
         {
+            UE_LOG(
+                LogDIQTE,
+                Error,
+                TEXT("StartQTE FAILED | Id=%s | Step=%d | InputType=None"),
+                *Config.QTEId.ToString(),
+                Index);
+
+            return false;
+        }
+
+        if (Step.TimeLimit <= 0.0f)
+        {
+            UE_LOG(
+                LogDIQTE,
+                Error,
+                TEXT("StartQTE FAILED | Id=%s | Step=%d | TimeLimit=%.2f"),
+                *Config.QTEId.ToString(),
+                Index,
+                Step.TimeLimit);
+
             return false;
         }
     }
 
     ActiveConfig = Config;
-
-    for (FQTEStep& Step : ActiveConfig.Steps)
-    {
-        Step.TimeLimit = FMath::Max(0.0f, Step.TimeLimit);
-    }
 
     CurrentInputIndex = 0;
     bQTEActive = true;
@@ -131,6 +171,16 @@ void UQTEComponent::StartCurrentStepTimer()
 
     const float StepTimeLimit = ActiveConfig.Steps[CurrentInputIndex].TimeLimit;
 
+    UE_LOG(
+    LogTemp,
+    Warning,
+    TEXT("QTE STEP TIMER START | Id=%s | Step=%d/%d | Expected=%d | Limit=%.2f"),
+    *ActiveConfig.QTEId.ToString(),
+    CurrentInputIndex + 1,
+    ActiveConfig.Steps.Num(),
+    static_cast<int32>(ActiveConfig.Steps[CurrentInputIndex].InputType),
+    StepTimeLimit);
+    
     if (StepTimeLimit <= 0.0f)
     {
         return;
@@ -219,6 +269,18 @@ float UQTEComponent::GetRemainingTime() const
     const float RemainingTime = World->GetTimerManager().GetTimerRemaining(QTETimeoutHandle);
 
     return FMath::Max(0.0f, RemainingTime);
+}
+
+float UQTEComponent::GetRemainingTimeNormalized() const
+{
+    const float TimeLimit = GetTimeLimit();
+
+    if (TimeLimit <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    return FMath::Clamp(GetRemainingTime() / TimeLimit,0.0f,1.0f);
 }
 
 void UQTEComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)

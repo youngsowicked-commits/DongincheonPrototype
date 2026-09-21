@@ -352,7 +352,8 @@ void ADIBattleEncounter::StartMidFightPresentation()
 bool ADIBattleEncounter::StartMidFightQTE()
 {
 	UE_LOG(
-		LogDIBattleEncounter, Warning,
+		LogDIBattleEncounter,
+		Warning,
 		TEXT("StartMidFightQTE CALLED | PresentationActive=%s | QTEId=%s"),
 		bMidFightPresentationActive ? TEXT("TRUE") : TEXT("FALSE"),
 		*MidFightQTEConfig.QTEId.ToString());
@@ -362,8 +363,28 @@ bool ADIBattleEncounter::StartMidFightQTE()
 		return false;
 	}
 
-	const bool bStartedQTE =
-		StartEncounterQTE(MidFightQTEConfig);
+	if (MidFightQTEConfig.QTEId.IsNone())
+	{
+		UE_LOG(
+			LogDIBattleEncounter,
+			Error,
+			TEXT("StartMidFightQTE FAILED | QTEId is None"));
+
+		return false;
+	}
+
+	if (MidFightQTEConfig.Steps.IsEmpty())
+	{
+		UE_LOG(
+			LogDIBattleEncounter,
+			Error,
+			TEXT("StartMidFightQTE FAILED | QTE Config has no Steps | Id=%s"),
+			*MidFightQTEConfig.QTEId.ToString());
+
+		return false;
+	}
+
+	const bool bStartedQTE = StartEncounterQTE(MidFightQTEConfig);
 
 	UE_LOG(
 		LogDIBattleEncounter,

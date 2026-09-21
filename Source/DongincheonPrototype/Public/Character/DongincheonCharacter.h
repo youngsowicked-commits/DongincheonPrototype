@@ -14,6 +14,7 @@ class UTargetingComponent;
 class UCombatComponent;
 class UInteractionComponent;
 class UInputAction;
+class UDIGrabComponent;
 class UAnimMontage;
 class UCameraShakeBase;
 
@@ -107,6 +108,7 @@ protected:
 	void HandleMoveInputCompleted(const FInputActionValue& Value);
 	
 	void HandleDodgeInput();
+	void HandleGrabInput();
 	
 	//Guard
 	void HandleGuardStarted();
@@ -205,6 +207,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UCombatComponent> CombatComponent;
 	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player|Components")
+	TObjectPtr<UDIGrabComponent> GrabComponent;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UInteractionComponent> InteractionComponent;
 	
@@ -214,6 +219,9 @@ protected:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
 	TObjectPtr<UInputAction> HeavyAttackAction;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
+	TObjectPtr<UInputAction> GrabAction;
 	
 	//Move
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")

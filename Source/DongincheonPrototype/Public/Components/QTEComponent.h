@@ -11,7 +11,8 @@ enum class EQTEInputType : uint8
     None,
     Light,
     Heavy,
-    Dodge
+    Dodge,
+    Guard
 };
 
 UENUM(BlueprintType)
@@ -105,6 +106,9 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "QTE")
     float GetRemainingTime() const;
+    
+    UFUNCTION(BlueprintPure, Category = "QTE")
+    float GetRemainingTimeNormalized() const;
 
     UPROPERTY(BlueprintAssignable, Category = "QTE")
     FQTEStartedSignature OnQTEStarted;
