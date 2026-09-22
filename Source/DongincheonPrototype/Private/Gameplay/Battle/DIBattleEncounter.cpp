@@ -48,6 +48,19 @@ void ADIBattleEncounter::BeginPlay()
 	SetBattleBlockerEnabled(false);
 }
 
+void ADIBattleEncounter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// Encounter가 제거되거나 World가 종료될 때 남아 있는 Presentation Input Lock을 정리한다.
+	ReleasePresentationPlayerLock();
+
+	if (IsValid(QTEComponent) && QTEComponent->IsQTEActive())
+	{
+		QTEComponent->CancelQTE();
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
 void ADIBattleEncounter::HandleEnemyHealthChanged(float OldHealth, float NewHealth, float MaxHealth)
 {
 	if (bCompleted || MaxHealth <= 0.0f || NewHealth <= 0.0f)
@@ -91,17 +104,18 @@ void ADIBattleEncounter::HandleEnemyHealthChanged(float OldHealth, float NewHeal
 
 void ADIBattleEncounter::HandlePlayerQTEInputPressed(EQTEInputType InputType)
 {
-	if (!IsValid(QTEComponent))
+	if (!IsValid(QTEComponent) || !QTEComponent->IsQTEActive())
 	{
 		return;
 	}
+
 	UE_LOG(
 		LogDIBattleEncounter,
 		Warning,
-		TEXT("QTE INPUT RECEIVED | Input=%d | Active=%s | Expected=%d"),
+		TEXT("QTE INPUT RECEIVED | Input=%d | Expected=%d"),
 		static_cast<int32>(InputType),
-		QTEComponent->IsQTEActive() ? TEXT("TRUE") : TEXT("FALSE"),
 		static_cast<int32>(QTEComponent->GetExpectedInput()));
+
 	QTEComponent->SubmitInput(InputType);
 }
 
@@ -255,6 +269,8 @@ void ADIBattleEncounter::PauseCombatForPresentation()
 
 	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0)))
 	{
+		PresentationLockedPlayer = Player;
+
 		Player->SetPresentationInputLocked(true);
 	}
 
@@ -281,6 +297,18 @@ void ADIBattleEncounter::PauseCombatForPresentation()
 	}
 
 	UE_LOG(LogDIBattleEncounter, Log, TEXT("Combat PAUSED for presentation: %s"), *GetName());
+}
+
+void ADIBattleEncounter::ReleasePresentationPlayerLock()
+{
+	// Presentation 시작 때 실제로 잠갔던 동일 Player만 해제한다.
+	if (ADongincheonCharacter* Player = PresentationLockedPlayer.Get())
+	{
+		Player->SetPresentationInputLocked(false);
+	}
+
+	// 다음 Presentation에서 이전 Player reference를 재사용하지 않도록 정리한다.
+	PresentationLockedPlayer.Reset();
 }
 
 void ADIBattleEncounter::ResumeCombatFromPresentation()
@@ -314,10 +342,7 @@ void ADIBattleEncounter::ResumeCombatFromPresentation()
 		}
 	}
 
-	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0)))
-	{
-		Player->SetPresentationInputLocked(false);
-	}
+	ReleasePresentationPlayerLock();
 
 	UE_LOG(LogDIBattleEncounter, Log, TEXT("Combat RESUMED from presentation: %s"), *GetName());
 }
@@ -576,6 +601,9 @@ void ADIBattleEncounter::CompleteEncounter()
 		return;
 	}
 
+	// Encounter가 Presentation 도중 종료되더라도 Player Input Lock이 남지 않도록 보장한다.
+	ReleasePresentationPlayerLock();
+	
 	bCompleted = true;
 
 	//전투종료, Block해제

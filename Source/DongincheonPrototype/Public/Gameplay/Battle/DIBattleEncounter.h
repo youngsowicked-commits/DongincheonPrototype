@@ -10,6 +10,7 @@ class UBoxComponent;
 class UPrimitiveComponent;
 class ATargetPoint;
 class ADongincheonEnemyBase;
+class ADongincheonCharacter;
 
 USTRUCT(BlueprintType)
 struct FDIBattleHealthTrigger
@@ -81,6 +82,7 @@ public:
 	
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 	//Player가 밟는 Encouter Trigger, 실제 Box 크기나 위치는 BP에서 조정
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Battle|Trigger")
@@ -161,6 +163,8 @@ private:
 	UPROPERTY(VisibleInstanceOnly, Category = "Battle|Runtime")
 	bool bMidFightQTESucceeded = false;
 	
+	TWeakObjectPtr<ADongincheonCharacter> PresentationLockedPlayer;
+	
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<ADongincheonEnemyBase>> SpawnedEnemies;
 	
@@ -188,4 +192,8 @@ private:
 	void SpawnEnemies();
 	void CompleteEncounter();
 	void SetBattleBlockerEnabled(bool bEnabled);
+	
+	// Presentation 동안 잠갔던 Player Input을 안전하게 해제하고 캐시를 정리한다.
+	// 정상 Resume뿐 아니라 Encounter 종료 / EndPlay 같은 비정상 종료 경로에서도 공통 사용한다.
+	void ReleasePresentationPlayerLock();
 };

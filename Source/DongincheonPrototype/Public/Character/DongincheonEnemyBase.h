@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Components/DIGrabComponent.h"
+#include "Components/DIHeatActionComponent.h"
 #include "DongincheonEnemyBase.generated.h"
 
 class UHealthComponent;
@@ -27,6 +29,12 @@ public:
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UCombatComponent> CombatComponent;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UDIGrabComponent> GrabComponent;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UDIHeatActionComponent> HeatActionComponent;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Enemy|Data")
 	TObjectPtr<UDIEnemyDefinition> EnemyDefinition = nullptr;
@@ -64,6 +72,9 @@ public:
 	void FinalizeDeath();
 	
 private:
+	// Grab 관계가 양쪽 Component에 완전히 설정된 다음 Grab 정책을 처리한다.
+	void ResolveGrabPolicyAfterGrabStarted();
+	
 	UPROPERTY(Transient)
 	int32 ActiveAttackIndex = INDEX_NONE;
 
@@ -82,6 +93,12 @@ protected:
 	
 	UFUNCTION()
 	void HandleGuardBroken(float BlockedDamage, AActor* DamageCauser);
+	
+	UFUNCTION()
+	void HandleGrabStateChanged(EDIGrabState PreviousState,EDIGrabState NewState);
+	
+	UFUNCTION()
+	void HandleHeatActionStateChanged(EDIHeatActionState PreviousState,EDIHeatActionState NewState);
 	
 	UFUNCTION(BlueprintImplementableEvent, Category = "Enemy|Presentation")
 	void OnDamagePresentation(float DamageAmount, AActor* DamageCauser);

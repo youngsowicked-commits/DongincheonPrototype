@@ -6,18 +6,9 @@
 #include "Components/ActorComponent.h"
 #include "InteractionComponent.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
-	FOnInteractableChanged,
-	AActor*,
-	NewInteractable
-);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteractableChanged,AActor*,NewInteractable);
 
-UCLASS( 
-	ClassGroup=(Interaction), 
-	BlueprintType,
-	Blueprintable,
-	meta=(BlueprintSpawnableComponent) 
-	)
+UCLASS( ClassGroup=(Interaction), BlueprintType,Blueprintable,meta=(BlueprintSpawnableComponent) )
 class DONGINCHEONPROTOTYPE_API UInteractionComponent : public UActorComponent
 {
 	GENERATED_BODY()
@@ -36,6 +27,9 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction")
 	float InteractionRadius = 250.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction|Debug")
+	bool bDebugInteraction = false;
 
 protected:
 	virtual void BeginPlay() override;
@@ -43,6 +37,8 @@ protected:
 	
 private:
 	void UpdateCurrentInteractable();
+	
+	void DrawInteractionDebug(AActor* SelectedTarget) const;
 	
 	UPROPERTY(Transient)
 	TObjectPtr<AActor> CurrentInteractable = nullptr;

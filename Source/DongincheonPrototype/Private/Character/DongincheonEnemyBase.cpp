@@ -3,8 +3,11 @@
 
 #include "Character/DongincheonEnemyBase.h"
 #include "AIController.h"
+#include "TimerManager.h"
 #include "Components/HealthComponent.h"
 #include "Components/CombatComponent.h"
+#include "Components/DIGrabComponent.h"
+#include "Components/DIHeatActionComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "AI/DongincheonAIController.h"
 #include "AI/Data/DIEnemyDefinition.h"
@@ -22,6 +25,8 @@ ADongincheonEnemyBase::ADongincheonEnemyBase()
 	
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
 	CombatComponent = CreateDefaultSubobject<UCombatComponent>(TEXT("Combat"));
+	GrabComponent = CreateDefaultSubobject<UDIGrabComponent>(TEXT("Grab"));
+	HeatActionComponent = CreateDefaultSubobject<UDIHeatActionComponent>(TEXT("HeatAction"));
 	
 	bUseControllerRotationYaw = false;
 
@@ -499,6 +504,17 @@ void ADongincheonEnemyBase::StopHitReact(float BlendOutTime)
 
 bool ADongincheonEnemyBase::StartDeath()
 {
+	if (IsValid(GrabComponent))
+	{
+		GrabComponent->ForceRelease();
+		GrabComponent->SetCanBeGrabbed(false);
+	}
+	
+	if (IsValid(HeatActionComponent))
+	{
+		HeatActionComponent->CancelHeatAction();
+	}
+	
 	//Death Gameplay State는 Presentation보다 먼저 보장한다.
 	//Death Montage가 없거나 재생 실패해도 AI가 계속 움직이면 안 된다.
 	if (AAIController* AIController = Cast<AAIController>(GetController()))
@@ -618,6 +634,16 @@ void ADongincheonEnemyBase::BeginPlay()
 		CombatComponent->OnGuardHit.AddUniqueDynamic(this, &ADongincheonEnemyBase::HandleGuardHit);
 		CombatComponent->OnGuardBroken.AddUniqueDynamic(this, &ADongincheonEnemyBase::HandleGuardBroken);
 	}
+	
+	if (GrabComponent)
+	{
+		GrabComponent->OnGrabStateChanged.AddUniqueDynamic(this,&ADongincheonEnemyBase::HandleGrabStateChanged);
+	}
+	
+	if (HeatActionComponent)
+	{
+		HeatActionComponent->OnHeatActionStateChanged.AddUniqueDynamic(this,&ADongincheonEnemyBase::HandleHeatActionStateChanged);
+	}
 }
 
 void ADongincheonEnemyBase::HandleHealthDamaged(float DamageAmount, AActor* DamageCauser)
@@ -716,6 +742,167 @@ void ADongincheonEnemyBase::HandleGuardBroken(float BlockedDamage, AActor* Damag
 	if (ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController()))
 	{
 		AIController->SendGuardBrokenEvent();
+	}
+}
+
+void ADongincheonEnemyBase::HandleGrabStateChanged(EDIGrabState PreviousState,EDIGrabState NewState)
+{
+	ADongincheonAIController* AIController =
+		Cast<ADongincheonAIController>(GetController());
+
+	// Grab Victim 진입.
+	if (NewState == EDIGrabState::BeingGrabbed)
+	{
+		if (IsValid(AIController))
+		{
+			AIController->StopMovement();
+		}
+
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+		{
+			Movement->StopMovementImmediately();
+		}
+
+		if (IsAttackActive())
+		{
+			CancelAttack(0.05f);
+		}
+
+		if (IsGuardActive())
+		{
+			StopGuard();
+		}
+
+		// BreakFree 정책은 BeginGrab()의 양방향 관계 설정이 끝난 다음 Tick에 처리한다.
+		if (IsValid(EnemyDefinition) &&
+			EnemyDefinition->GrabPolicy == EDIEnemyGrabPolicy::BreakFree)
+		{
+			GetWorldTimerManager().SetTimerForNextTick(
+				this,
+				&ADongincheonEnemyBase::ResolveGrabPolicyAfterGrabStarted);
+		}
+
+		// Heat Action Victim이 더 높은 우선순위를 가진다.
+		// 이미 Heat Action 중이라면 BeingGrabbed로 StateTree를 덮어쓰지 않는다.
+		if (IsValid(HeatActionComponent) &&
+			HeatActionComponent->IsBeingVictim())
+		{
+			return;
+		}
+
+		if (IsValid(AIController))
+		{
+			AIController->SendGrabbedEvent();
+		}
+
+		return;
+	}
+
+	// Grab Victim 이탈.
+	if (PreviousState == EDIGrabState::BeingGrabbed)
+	{
+		// 죽은 Enemy는 Combat으로 복귀하지 않는다.
+		if (IsValid(HealthComponent) && HealthComponent->IsDead())
+		{
+			return;
+		}
+
+		// Heat Action Victim 상태가 남아있으면 Combat으로 복귀하지 않는다.
+		if (IsValid(HeatActionComponent) &&
+			HeatActionComponent->IsBeingVictim())
+		{
+			return;
+		}
+
+		if (IsValid(AIController))
+		{
+			AIController->SendGrabReleasedEvent();
+		}
+	}
+}
+
+void ADongincheonEnemyBase::ResolveGrabPolicyAfterGrabStarted()
+{
+	if (!IsValid(GrabComponent) ||
+		!GrabComponent->IsBeingGrabbed())
+	{
+		return;
+	}
+
+	if (!IsValid(EnemyDefinition) ||
+		EnemyDefinition->GrabPolicy != EDIEnemyGrabPolicy::BreakFree)
+	{
+		return;
+	}
+
+	GrabComponent->ForceRelease();
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("01B GRAB: BreakFree | Enemy=%s"),
+		*GetNameSafe(this));
+}
+
+void ADongincheonEnemyBase::HandleHeatActionStateChanged(EDIHeatActionState PreviousState,EDIHeatActionState NewState)
+{
+	ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController());
+
+	// Heat Action Victim 진입.
+	if (NewState == EDIHeatActionState::BeingVictim)
+	{
+		if (IsValid(AIController))
+		{
+			AIController->StopMovement();
+		}
+
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+		{
+			Movement->StopMovementImmediately();
+		}
+
+		if (IsAttackActive())
+		{
+			CancelAttack(0.05f);
+		}
+
+		if (IsGuardActive())
+		{
+			StopGuard();
+		}
+
+		if (IsValid(AIController))
+		{
+			AIController->SendHeatActionVictimEvent();
+		}
+
+		return;
+	}
+
+	// Heat Action Victim 이탈.
+	if (PreviousState == EDIHeatActionState::BeingVictim)
+	{
+		// Heat Action으로 죽었다면 AI를 다시 깨우지 않는다.
+		if (IsValid(HealthComponent) && HealthComponent->IsDead())
+		{
+			return;
+		}
+
+		// Grab이 아직 유지 중이면 Combat이 아니라 BeingGrabbed로 돌아간다.
+		if (IsValid(GrabComponent) && GrabComponent->IsBeingGrabbed())
+		{
+			if (IsValid(AIController))
+			{
+				AIController->SendGrabbedEvent();
+			}
+
+			return;
+		}
+
+		if (IsValid(AIController))
+		{
+			AIController->SendHeatActionVictimReleasedEvent();
+		}
 	}
 }
 

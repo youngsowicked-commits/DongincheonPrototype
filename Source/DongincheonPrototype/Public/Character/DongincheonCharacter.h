@@ -6,15 +6,19 @@
 #include "GameFramework/Character.h"
 #include "Gameplay/Data/DIAttackData.h"
 #include "Gameplay/Data/DIGuardData.h"
+#include "Gameplay/Data/DIGrabData.h"
+#include "Gameplay/Data/DIHeatActionData.h"
 #include "Components/QTEComponent.h"
 #include "DongincheonCharacter.generated.h"
 
+enum class EDIGrabState : uint8;
 class UHealthComponent;
 class UTargetingComponent;
 class UCombatComponent;
 class UInteractionComponent;
 class UInputAction;
 class UDIGrabComponent;
+class UDIHeatActionComponent;
 class UAnimMontage;
 class UCameraShakeBase;
 
@@ -108,7 +112,39 @@ protected:
 	void HandleMoveInputCompleted(const FInputActionValue& Value);
 	
 	void HandleDodgeInput();
+	
+	//Grab
+	friend class UAnimNotify_GrabCheck;
+
 	void HandleGrabInput();
+	AActor* FindBestGrabTarget() const;
+	void StartPlayerGrabAttempt();
+	void TryCommitPlayerGrab();
+	void HandleGrabStartMontageEnded(UAnimMontage* Montage,bool bInterrupted);
+	
+	void PlayPlayerGrabHold();
+	void StopPlayerGrabHold(float BlendOutTime);
+	
+	void StartPlayerGrabAttack();
+	void HandleGrabAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	
+	void StartPlayerGrabRelease();
+	void HandleGrabReleaseMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	
+	UFUNCTION()
+	void HandleGrabStateChanged(EDIGrabState PreviousState, EDIGrabState NewState);
+
+	void StartPlayerBeingGrabbed();
+	void HandleBeingGrabbedStartMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	void PlayPlayerBeingGrabbedHold();
+	
+	UFUNCTION()
+	void HandleGrabAttackReceived(float Damage, AActor* DamageCauser);
+
+	void StartPlayerBeingGrabbedHitReact();
+	void HandleBeingGrabbedHitReactMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	
+	void CancelPlayerGrab(float BlendOutTime);
 	
 	//Guard
 	void HandleGuardStarted();
@@ -210,6 +246,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player|Components")
 	TObjectPtr<UDIGrabComponent> GrabComponent;
 	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player|Components")
+	TObjectPtr<UDIHeatActionComponent> HeatActionComponent;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UInteractionComponent> InteractionComponent;
 	
@@ -222,6 +261,8 @@ protected:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
 	TObjectPtr<UInputAction> GrabAction;
+	
+	
 	
 	//Move
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
@@ -263,6 +304,19 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Guard")
 	FGuardConfig GuardConfig;
 	
+	//Grab Content
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Grab")
+	FGrabConfig GrabConfig;
+	
+	//Hit Action Content
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|HeatAction")
+	FHeatActionConfig NormalHeatActionConfig;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|HeatAction")
+	FHeatActionConfig GrabHeatActionConfig;
+	
+	AActor* ResolveContextualHeatActionTarget(const FHeatActionConfig*& OutConfig) const;
+	
 	//Attack Content
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack")
 	TArray<FAttackConfig> ComboAttacks;
@@ -276,6 +330,13 @@ protected:
 	// [2] = Light 3타 후 Heavy Chain ...
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack")
 	TArray<FPlayerHeavyComboBranch> HeavyBranches;
+	
+	//Grab Content
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Grab", meta = (ClampMin = "0.0"))
+	float GrabSearchRadius = 180.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Grab",  meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float GrabMinForwardDot = 0.35f;
 	
 	//Hit React Content
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|HitReact")
@@ -362,6 +423,30 @@ protected:
 	
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> ActiveHitReactMontage;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveGrabStartMontage = nullptr;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveGrabHoldMontage = nullptr;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveGrabAttackMontage = nullptr;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveGrabReleaseMontage = nullptr;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveBeingGrabbedStartMontage = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveBeingGrabbedHoldMontage = nullptr;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveBeingGrabbedHitReactMontage = nullptr;
+	
+	float PreGrabWalkSpeed = 0.0f;
+	bool bGrabWalkSpeedOverridden = false;
 	
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> ActiveDeathMontage;

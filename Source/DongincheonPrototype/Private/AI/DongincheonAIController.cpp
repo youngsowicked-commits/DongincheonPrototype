@@ -13,6 +13,11 @@ UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Dead,"StateTreeEvent.Enem
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Presentation_Begin,"StateTreeEvent.Enemy.Presentation.Begin");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Presentation_End,"StateTreeEvent.Enemy.Presentation.End");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_GuardBroken, "StateTreeEvent.Enemy.GuardBroken");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Grabbed_Begin,"StateTreeEvent.Enemy.Grabbed.Begin");
+
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Grabbed_End,"StateTreeEvent.Enemy.Grabbed.End");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_HeatActionVictim_Begin,"StateTreeEvent.Enemy.HeatActionVictim.Begin");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_HeatActionVictim_End,"StateTreeEvent.Enemy.HeatActionVictim.End");
 
 
 ADongincheonAIController::ADongincheonAIController()
@@ -154,6 +159,93 @@ void ADongincheonAIController::SendGuardBrokenEvent()
 		LogTemp,
 		Warning,
 		TEXT("01B: GuardBreak Event SENT"));
+}
+
+void ADongincheonAIController::SendGrabbedEvent()
+{
+	if (!StateTreeComponent)
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("01B GRAB: StateTreeComponent NULL"));
+
+		return;
+	}
+
+	StateTreeComponent->SendStateTreeEvent(
+		FStateTreeEvent(TAG_StateTreeEvent_Enemy_Grabbed_Begin));
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("01B GRAB: Grabbed BEGIN Event SENT | Pawn=%s"),
+		*GetNameSafe(GetPawn()));
+}
+
+void ADongincheonAIController::SendGrabReleasedEvent()
+{
+	if (!StateTreeComponent)
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("01B GRAB: StateTreeComponent NULL"));
+
+		return;
+	}
+
+	StateTreeComponent->SendStateTreeEvent(FStateTreeEvent(TAG_StateTreeEvent_Enemy_Grabbed_End));
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("01B GRAB: Grabbed END Event SENT | Pawn=%s"),
+		*GetNameSafe(GetPawn()));
+}
+
+void ADongincheonAIController::SendHeatActionVictimEvent()
+{
+	if (!StateTreeComponent)
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("01B HEAT ACTION: StateTreeComponent NULL"));
+
+		return;
+	}
+
+	StateTreeComponent->SendStateTreeEvent(
+		FStateTreeEvent(TAG_StateTreeEvent_Enemy_HeatActionVictim_Begin));
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("01B HEAT ACTION: Victim BEGIN Event SENT | Pawn=%s"),
+		*GetNameSafe(GetPawn()));
+}
+
+void ADongincheonAIController::SendHeatActionVictimReleasedEvent()
+{
+	if (!StateTreeComponent)
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("01B HEAT ACTION: StateTreeComponent NULL"));
+
+		return;
+	}
+
+	StateTreeComponent->SendStateTreeEvent(
+		FStateTreeEvent(TAG_StateTreeEvent_Enemy_HeatActionVictim_End));
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("01B HEAT ACTION: Victim END Event SENT | Pawn=%s"),
+		*GetNameSafe(GetPawn()));
 }
 
 void ADongincheonAIController::MarkGuardUsed()

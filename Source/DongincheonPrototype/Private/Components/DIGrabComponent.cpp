@@ -1,5 +1,7 @@
 ﻿#include "Components/DIGrabComponent.h"
 
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/DamageType.h"
 #include "GameFramework/Actor.h"
 
 UDIGrabComponent::UDIGrabComponent()
@@ -63,33 +65,83 @@ bool UDIGrabComponent::BeginGrab(AActor* Target)
     return true;
 }
 
-void UDIGrabComponent::CompleteGrabStart()
+void UDIGrabComponent::CompleteGrabStart(float HoldDistance,float VictimYawOffset)
 {
-    if (GrabState != EDIGrabState::Starting)
-    {
-        return;
-    }
+    if (GrabState != EDIGrabState::Starting) return;
+    if (!GrabbedActor.IsValid()) { ForceRelease(); return; }
 
-    if (!GrabbedActor.IsValid())
+    AActor* OwnerActor = GetOwner();
+    AActor* TargetActor = GrabbedActor.Get();
+
+    if (!IsValid(OwnerActor) || !IsValid(TargetActor))
     {
         ForceRelease();
         return;
     }
 
+    FVector TargetLocation = OwnerActor->GetActorLocation() + OwnerActor->GetActorForwardVector() * FMath::Max(0.0f,HoldDistance);
+    TargetLocation.Z = TargetActor->GetActorLocation().Z;
+
+    FRotator TargetRotation = OwnerActor->GetActorRotation();
+    TargetRotation.Yaw += VictimYawOffset;
+
+    TargetActor->SetActorLocationAndRotation(TargetLocation,TargetRotation,false,nullptr,ETeleportType::TeleportPhysics);
+    TargetActor->AttachToActor(OwnerActor,FAttachmentTransformRules::KeepWorldTransform);
+
     SetGrabState(EDIGrabState::Holding);
 }
 
-bool UDIGrabComponent::BeginGrabAttack()
+bool UDIGrabComponent::BeginGrabAttack(float Damage)
 {
-    if (GrabState != EDIGrabState::Holding ||
-        !GrabbedActor.IsValid())
+    if (GrabState != EDIGrabState::Holding || !GrabbedActor.IsValid())
     {
         return false;
     }
 
+    ActiveGrabAttackDamage = FMath::Max(0.0f, Damage);
+
     SetGrabState(EDIGrabState::Attacking);
 
     return true;
+}
+
+void UDIGrabComponent::ProcessGrabAttackHit()
+{
+    if (GrabState != EDIGrabState::Attacking || !GrabbedActor.IsValid() || ActiveGrabAttackDamage <= 0.0f)
+    {
+        return;
+    }
+
+    AActor* OwnerActor = GetOwner();
+    AActor* TargetActor = GrabbedActor.Get();
+
+    if (!IsValid(OwnerActor) || !IsValid(TargetActor))
+    {
+        return;
+    }
+
+    const float AppliedDamage = UGameplayStatics::ApplyDamage(TargetActor,ActiveGrabAttackDamage,OwnerActor->GetInstigatorController(),
+            OwnerActor,UDamageType::StaticClass());
+
+    if (AppliedDamage <= 0.0f)
+    {
+        return;
+    }
+
+    if (UDIGrabComponent* TargetGrabComponent = TargetActor->FindComponentByClass<UDIGrabComponent>())
+    {
+        TargetGrabComponent->ReceiveGrabAttackHit(AppliedDamage,OwnerActor);
+    }
+}
+
+void UDIGrabComponent::ReceiveGrabAttackHit(float Damage,AActor* DamageCauser)
+{
+    if (GrabState != EDIGrabState::BeingGrabbed)
+    {
+        return;
+    }
+
+    OnGrabAttackReceived.Broadcast(Damage,DamageCauser);
 }
 
 void UDIGrabComponent::EndGrabAttack()
@@ -104,7 +156,9 @@ void UDIGrabComponent::EndGrabAttack()
         ForceRelease();
         return;
     }
-
+    
+    ActiveGrabAttackDamage = 0.0f;
+    
     SetGrabState(EDIGrabState::Holding);
 }
 
@@ -274,8 +328,25 @@ void UDIGrabComponent::SetGrabState(EDIGrabState NewState)
 
 void UDIGrabComponent::ClearGrabState()
 {
+    DetachFromGrabber();
+
     GrabbedActor.Reset();
     GrabbedByActor.Reset();
+    ActiveGrabAttackDamage = 0.0f;
 
     SetGrabState(EDIGrabState::None);
+}
+
+void UDIGrabComponent::DetachFromGrabber()
+{
+    if (GrabState != EDIGrabState::BeingGrabbed) return;
+
+    AActor* OwnerActor = GetOwner();
+
+    if (!IsValid(OwnerActor)) return;
+
+    if (OwnerActor->GetAttachParentActor() == GrabbedByActor.Get())
+    {
+        OwnerActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    }
 }

@@ -11,8 +11,11 @@
 #include "Components/TargetingComponent.h"
 #include "Components/HealthComponent.h"
 #include "Components/DIGrabComponent.h"
+#include "Components/DIHeatActionComponent.h"
 #include "Components/InteractionComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/World.h"
+#include "Engine/OverlapResult.h"
 #include "EnhancedInputComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -27,6 +30,7 @@ ADongincheonCharacter::ADongincheonCharacter()
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
 	CombatComponent = CreateDefaultSubobject<UCombatComponent>(TEXT("Combat"));
 	GrabComponent = CreateDefaultSubobject<UDIGrabComponent>(TEXT("GrabComponent"));
+	HeatActionComponent = CreateDefaultSubobject<UDIHeatActionComponent>(TEXT("HeatActionComponent"));
 	TargetingComponent = CreateDefaultSubobject<UTargetingComponent>(TEXT("Targeting"));
 }
 
@@ -44,6 +48,12 @@ void ADongincheonCharacter::BeginPlay()
 	if (IsValid(CombatComponent))
 	{
 		CombatComponent->OnHitConfirmed.AddUniqueDynamic(this,&ADongincheonCharacter::HandleCombatHitConfirmed);
+	}
+	
+	if (IsValid(GrabComponent))
+	{
+		GrabComponent->OnGrabStateChanged.AddDynamic(this,&ADongincheonCharacter::HandleGrabStateChanged);
+		GrabComponent->OnGrabAttackReceived.AddDynamic(this,&ADongincheonCharacter::HandleGrabAttackReceived);
 	}
 }
 
@@ -153,21 +163,15 @@ void ADongincheonCharacter::HandleMoveInputCompleted(const FInputActionValue& Va
 // Runtime Query
 bool ADongincheonCharacter::IsMovementInputAllowed() const
 {
-	if (IsGameplayInputLocked())
+	if (IsGameplayInputLocked()) return false;
+	if (!IsValid(HealthComponent) || HealthComponent->IsDead()) return false;
+
+	if (IsValid(GrabComponent))
 	{
-		return false;
+		if (GrabComponent->IsBeingGrabbed()) return false;
+		if (GrabComponent->IsGrabbing() && !GrabComponent->IsHoldingGrab()) return false;
 	}
-	
-	if (!IsValid(HealthComponent))
-	{
-		return false;
-	}
-	
-	if (HealthComponent->IsDead())
-	{
-		return false;
-	}
-	
+
 	const bool bGuardLocked = IsValid(CombatComponent) && (CombatComponent->IsGuarding() || CombatComponent->IsGuardBroken());
 
 	return !bPlayerAttackActive && !bPlayerDodging && !bGuardLocked && !bPlayerHitReacting && !bPlayerDeathStarted;
@@ -175,6 +179,14 @@ bool ADongincheonCharacter::IsMovementInputAllowed() const
 
 void ADongincheonCharacter::SetPresentationInputLocked(bool blocked)
 {
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("PLAYER PRESENTATION LOCK REQUEST | Player=%s | Current=%s | Requested=%s"),
+		*GetNameSafe(this),
+		bPresentationInputLocked ? TEXT("TRUE") : TEXT("FALSE"),
+		blocked ? TEXT("TRUE") : TEXT("FALSE"));
+	
 	if (bPresentationInputLocked == blocked)
 	{
 		return;
@@ -190,6 +202,7 @@ void ADongincheonCharacter::SetPresentationInputLocked(bool blocked)
 	//진행중이던 일반 Gameplay Action 정리
 	CancelPlayerAttack(0.05f);
 	CancelPlayerDodge(0.05f);
+	CancelPlayerGrab(0.05f);
 	
 	bGuardInputHeld = false;
 	
@@ -230,13 +243,29 @@ void ADongincheonCharacter::HandleAttackInput()
 		return;
 	}
 
-	if (!IsValid(HealthComponent) || !IsValid(CombatComponent))
+	if (!IsValid(HealthComponent) || !IsValid(CombatComponent) || !IsValid(GrabComponent))
 	{
 		return;
 	}
 
 	if (HealthComponent->IsDead() || bPlayerDeathStarted || bPlayerHitReacting || bPlayerDodging ||
 		CombatComponent->IsGuarding() || CombatComponent->IsGuardBroken())
+	{
+		return;
+	}
+	
+	if (GrabComponent->IsBeingGrabbed())
+	{
+		return;
+	}
+
+	if (GrabComponent->IsHoldingGrab())
+	{
+		StartPlayerGrabAttack();
+		return;
+	}
+
+	if (GrabComponent->IsGrabbing())
 	{
 		return;
 	}
@@ -278,6 +307,44 @@ void ADongincheonCharacter::HandleAttackInput()
 	{
 		QueuedAttackType = EQueuedAttackType::Light;
 	}
+}
+
+AActor* ADongincheonCharacter::ResolveContextualHeatActionTarget(const FHeatActionConfig*& OutConfig) const
+{
+	OutConfig = nullptr;
+
+	if (!IsValid(HeatActionComponent))
+	{
+		return nullptr;
+	}
+
+	if (IsValid(GrabComponent) && GrabComponent->IsHoldingGrab())
+	{
+		AActor* Target = GrabComponent->GetGrabbedActor();
+
+		if (!HeatActionComponent->CanStartHeatAction(Target,GrabHeatActionConfig))
+		{
+			return nullptr;
+		}
+
+		OutConfig = &GrabHeatActionConfig;
+		return Target;
+	}
+
+	if (IsValid(GrabComponent) && GrabComponent->IsGrabbing())
+	{
+		return nullptr;
+	}
+
+	AActor* Target = HeatActionComponent->FindBestHeatActionTarget(NormalHeatActionConfig);
+
+	if (!HeatActionComponent->CanStartHeatAction(Target,NormalHeatActionConfig))
+	{
+		return nullptr;
+	}
+
+	OutConfig = &NormalHeatActionConfig;
+	return Target;
 }
 
 void ADongincheonCharacter::HandleHeavyAttackInput()
@@ -602,7 +669,12 @@ void ADongincheonCharacter::HandleHealthDamaged(float DamageAmount, AActor* Dama
 	{
 		return;
 	}
-	
+
+	if (IsValid(GrabComponent) && GrabComponent->IsBeingGrabbed())
+	{
+		return;
+	}
+    
 	StartPlayerHitReact();
 }
 
@@ -646,17 +718,685 @@ void ADongincheonCharacter::HandleGrabInput()
 		return;
 	}
 
-	if (!IsValid(HealthComponent) || !IsValid(GrabComponent))
+	if (!IsValid(HealthComponent) || !IsValid(CombatComponent) || !IsValid(GrabComponent))
 	{
 		return;
 	}
 
-	if (HealthComponent->IsDead() || bPlayerDeathStarted || bPlayerHitReacting || bPlayerDodging)
+	if (HealthComponent->IsDead() || bPlayerDeathStarted || bPlayerHitReacting || bPlayerDodging ||
+		bPlayerAttackActive || CombatComponent->IsGuarding() || CombatComponent->IsGuardBroken())
 	{
 		return;
 	}
 
-	// Actual Grab / Release orchestration is added next.
+	if (GrabComponent->IsBeingGrabbed())
+	{
+		return;
+	}
+
+	if (GrabComponent->IsHoldingGrab())
+	{
+		StartPlayerGrabRelease();
+		return;
+	}
+
+	if (GrabComponent->IsGrabbing())
+	{
+		return;
+	}
+
+	if (IsValid(ActiveGrabStartMontage))
+	{
+		return;
+	}
+
+	StartPlayerGrabAttempt();
+}
+
+AActor* ADongincheonCharacter::FindBestGrabTarget() const
+{
+    if (!IsValid(GrabComponent) || !IsValid(GetWorld()) || GrabSearchRadius <= 0.0f)
+    {
+        return nullptr;
+    }
+
+    TArray<FOverlapResult> Overlaps;
+
+    FCollisionObjectQueryParams ObjectQueryParams;
+    ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
+
+    FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(PlayerGrabSearch),false,this);
+
+    const bool bFoundAny = GetWorld()->OverlapMultiByObjectType(Overlaps,GetActorLocation(),FQuat::Identity,
+            ObjectQueryParams,FCollisionShape::MakeSphere(GrabSearchRadius),QueryParams);
+
+    if (!bFoundAny)
+    {
+        return nullptr;
+    }
+
+    AActor* BestTarget = nullptr;
+    float BestDistanceSquared = TNumericLimits<float>::Max();
+
+    const FVector PlayerLocation = GetActorLocation();
+    const FVector PlayerForward = GetActorForwardVector().GetSafeNormal2D();
+
+    for (const FOverlapResult& Overlap : Overlaps)
+    {
+        AActor* Candidate = Overlap.GetActor();
+
+        if (!IsValid(Candidate) || Candidate == this)
+        {
+            continue;
+        }
+
+        if (!GrabComponent->CanStartGrab(Candidate))
+        {
+            continue;
+        }
+
+        const FVector ToCandidate = Candidate->GetActorLocation() - PlayerLocation;
+
+        const FVector Direction = ToCandidate.GetSafeNormal2D();
+
+        if (Direction.IsNearlyZero())
+        {
+            continue;
+        }
+
+        const float ForwardDot = FVector::DotProduct(PlayerForward, Direction);
+
+        if (ForwardDot < GrabMinForwardDot)
+        {
+            continue;
+        }
+
+        const float DistanceSquared = ToCandidate.SizeSquared2D();
+
+        if (DistanceSquared < BestDistanceSquared)
+        {
+            BestDistanceSquared = DistanceSquared;
+            BestTarget = Candidate;
+        }
+    }
+
+    return BestTarget;
+}
+
+void ADongincheonCharacter::StartPlayerGrabAttempt()
+{
+	if (!IsValid(GrabComponent) || !IsValid(GetMesh()) || !IsValid(GrabConfig.GrabStartMontage))
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		return;
+	}
+
+	const float SafePlayRate = GrabConfig.GrabPlayRate > 0.0f ? GrabConfig.GrabPlayRate : 1.0f;
+	const float MontageResult = AnimInstance->Montage_Play(GrabConfig.GrabStartMontage,SafePlayRate);
+
+	if (MontageResult <= 0.0f)
+	{
+		return;
+	}
+
+	ActiveGrabStartMontage = GrabConfig.GrabStartMontage;
+
+	FOnMontageEnded MontageEndedDelegate;
+	MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleGrabStartMontageEnded);
+	AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveGrabStartMontage);
+}
+
+void ADongincheonCharacter::TryCommitPlayerGrab()
+{
+	if (!IsValid(GrabComponent) || !IsValid(ActiveGrabStartMontage))
+	{
+		return;
+	}
+
+	if (GrabComponent->IsGrabbing() || GrabComponent->IsBeingGrabbed())
+	{
+		return;
+	}
+
+	AActor* Target = FindBestGrabTarget();
+
+	if (!IsValid(Target))
+	{
+		return;
+	}
+
+	GrabComponent->BeginGrab(Target);
+}
+
+void ADongincheonCharacter::HandleGrabStartMontageEnded(UAnimMontage* Montage,bool bInterrupted)
+{
+	if (!IsValid(Montage) || Montage != ActiveGrabStartMontage)
+	{
+		return;
+	}
+
+	ActiveGrabStartMontage = nullptr;
+
+	if (!IsValid(GrabComponent))
+	{
+		return;
+	}
+
+	if (bInterrupted)
+	{
+		if (GrabComponent->IsGrabbing())
+		{
+			GrabComponent->ForceRelease();
+		}
+
+		return;
+	}
+
+	if (GrabComponent->GetGrabState() != EDIGrabState::Starting)
+	{
+		return;
+	}
+
+	GrabComponent->CompleteGrabStart(GrabConfig.GrabHoldDistance,GrabConfig.GrabVictimYawOffset);
+
+	if (GrabComponent->IsHoldingGrab())
+	{
+		PlayPlayerGrabHold();
+	}
+}
+
+
+void ADongincheonCharacter::PlayPlayerGrabHold()
+{
+	if (!IsValid(GrabComponent) || !GrabComponent->IsHoldingGrab() || !IsValid(GetMesh()) || !IsValid(GrabConfig.GrabHoldMontage))
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		return;
+	}
+
+	const float SafePlayRate = GrabConfig.GrabPlayRate > 0.0f ? GrabConfig.GrabPlayRate : 1.0f;
+	const float MontageResult = AnimInstance->Montage_Play(GrabConfig.GrabHoldMontage,SafePlayRate);
+
+	if (MontageResult <= 0.0f)
+	{
+		return;
+	}
+
+	ActiveGrabHoldMontage = GrabConfig.GrabHoldMontage;
+}
+
+void ADongincheonCharacter::StopPlayerGrabHold(float BlendOutTime)
+{
+	UAnimMontage* MontageToStop = ActiveGrabHoldMontage;
+	ActiveGrabHoldMontage = nullptr;
+
+	if (!IsValid(MontageToStop) || !IsValid(GetMesh()))
+	{
+		return;
+	}
+
+	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+	{
+		AnimInstance->Montage_Stop(FMath::Max(0.0f,BlendOutTime),MontageToStop);
+	}
+}
+
+void ADongincheonCharacter::StartPlayerGrabAttack()
+{
+	if (!IsValid(GrabComponent) || !GrabComponent->IsHoldingGrab() || !IsValid(GetMesh()) || !IsValid(GrabConfig.GrabAttackMontage))
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		return;
+	}
+
+	if (!GrabComponent->BeginGrabAttack(GrabConfig.GrabAttackDamage))
+	{
+		return;
+	}
+
+	StopPlayerGrabHold(0.05f);
+	
+	const float SafePlayRate = GrabConfig.GrabPlayRate > 0.0f ? GrabConfig.GrabPlayRate : 1.0f;
+
+	const float MontageResult = AnimInstance->Montage_Play(GrabConfig.GrabAttackMontage,SafePlayRate);
+
+	if (MontageResult <= 0.0f)
+	{
+		GrabComponent->EndGrabAttack();
+		PlayPlayerGrabHold();
+		return;
+	}
+
+	ActiveGrabAttackMontage = GrabConfig.GrabAttackMontage;
+
+	FOnMontageEnded MontageEndedDelegate;
+
+	MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleGrabAttackMontageEnded);
+
+	AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveGrabAttackMontage);
+}
+
+void ADongincheonCharacter::HandleGrabAttackMontageEnded(UAnimMontage* Montage,bool bInterrupted)
+{
+	if (!IsValid(Montage) || Montage != ActiveGrabAttackMontage)
+	{
+		return;
+	}
+
+	ActiveGrabAttackMontage = nullptr;
+
+	if (!IsValid(GrabComponent))
+	{
+		return;
+	}
+
+	if (GrabComponent->IsHoldingGrab())
+	{
+		PlayPlayerGrabHold();
+	}
+}
+
+void ADongincheonCharacter::StartPlayerGrabRelease()
+{
+	if (!IsValid(GrabComponent) || !GrabComponent->IsHoldingGrab())
+	{
+		return;
+	}
+
+	if (!GrabComponent->BeginReleaseGrab())
+	{
+		return;
+	}
+	
+	StopPlayerGrabHold(0.05f);
+
+	if (!IsValid(GrabConfig.GrabReleaseMontage) || !IsValid(GetMesh()))
+	{
+		GrabComponent->CompleteReleaseGrab();
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		GrabComponent->CompleteReleaseGrab();
+		return;
+	}
+
+	const float SafePlayRate = GrabConfig.GrabPlayRate > 0.0f ? GrabConfig.GrabPlayRate : 1.0f;
+
+	const float MontageResult = AnimInstance->Montage_Play(GrabConfig.GrabReleaseMontage,SafePlayRate);
+
+	if (MontageResult <= 0.0f)
+	{
+		GrabComponent->CompleteReleaseGrab();
+		return;
+	}
+
+	ActiveGrabReleaseMontage = GrabConfig.GrabReleaseMontage;
+
+	FOnMontageEnded MontageEndedDelegate;
+
+	MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleGrabReleaseMontageEnded);
+
+	AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveGrabReleaseMontage);
+}
+
+void ADongincheonCharacter::HandleGrabReleaseMontageEnded(UAnimMontage* Montage,bool bInterrupted)
+{
+	if (!IsValid(Montage) || Montage != ActiveGrabReleaseMontage)
+	{
+		return;
+	}
+
+	ActiveGrabReleaseMontage = nullptr;
+
+	if (!IsValid(GrabComponent))
+	{
+		return;
+	}
+
+	if (bInterrupted)
+	{
+		GrabComponent->ForceRelease();
+		return;
+	}
+
+	GrabComponent->CompleteReleaseGrab();
+}
+
+void ADongincheonCharacter::HandleGrabStateChanged(EDIGrabState PreviousState,EDIGrabState NewState)
+{
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		if (PreviousState == EDIGrabState::None && NewState == EDIGrabState::Starting)
+		{
+			PreGrabWalkSpeed = Movement->MaxWalkSpeed;
+			bGrabWalkSpeedOverridden = true;
+			Movement->StopMovementImmediately();
+		}
+
+		if (NewState == EDIGrabState::Holding && bGrabWalkSpeedOverridden)
+		{
+			Movement->MaxWalkSpeed = FMath::Max(0.0f,GrabConfig.GrabMoveSpeed);
+		}
+
+		if (NewState == EDIGrabState::Attacking || NewState == EDIGrabState::Releasing)
+		{
+			Movement->StopMovementImmediately();
+		}
+
+		if (NewState == EDIGrabState::BeingGrabbed)
+		{
+			Movement->StopMovementImmediately();
+			Movement->DisableMovement();
+		}
+
+		if (PreviousState == EDIGrabState::BeingGrabbed && NewState == EDIGrabState::None)
+		{
+			if (!bPlayerDeathStarted && IsValid(HealthComponent) && !HealthComponent->IsDead())
+			{
+				Movement->SetMovementMode(MOVE_Walking);
+			}
+		}
+
+		if (NewState == EDIGrabState::None && bGrabWalkSpeedOverridden)
+		{
+			Movement->MaxWalkSpeed = PreGrabWalkSpeed;
+			PreGrabWalkSpeed = 0.0f;
+			bGrabWalkSpeedOverridden = false;
+		}
+	}
+	
+	if (NewState == EDIGrabState::BeingGrabbed)
+	{
+		StartPlayerBeingGrabbed();
+		return;
+	}
+
+	if (PreviousState == EDIGrabState::BeingGrabbed && NewState == EDIGrabState::None)
+	{
+		if (IsValid(GetMesh()))
+		{
+			if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+			{
+				if (IsValid(ActiveBeingGrabbedStartMontage))
+				{
+					AnimInstance->Montage_Stop(0.15f,ActiveBeingGrabbedStartMontage);
+				}
+
+				if (IsValid(ActiveBeingGrabbedHoldMontage))
+				{
+					AnimInstance->Montage_Stop(0.15f,ActiveBeingGrabbedHoldMontage);
+				}
+				
+				if (IsValid(ActiveBeingGrabbedHitReactMontage))
+				{
+					AnimInstance->Montage_Stop(0.15f,ActiveBeingGrabbedHitReactMontage);
+				}
+			}
+		}
+
+		ActiveBeingGrabbedStartMontage = nullptr;
+		ActiveBeingGrabbedHoldMontage = nullptr;
+		ActiveBeingGrabbedHitReactMontage = nullptr;
+	}
+}
+
+void ADongincheonCharacter::StartPlayerBeingGrabbed()
+{
+	if (!IsValid(GrabComponent) || !GrabComponent->IsBeingGrabbed() || !IsValid(GetMesh()))
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		return;
+	}
+
+	if (!IsValid(GrabConfig.BeingGrabbedStartMontage))
+	{
+		PlayPlayerBeingGrabbedHold();
+		return;
+	}
+
+	const float SafePlayRate = GrabConfig.GrabPlayRate > 0.0f ? GrabConfig.GrabPlayRate : 1.0f;
+
+	const float MontageResult = AnimInstance->Montage_Play(GrabConfig.BeingGrabbedStartMontage,SafePlayRate);
+
+	if (MontageResult <= 0.0f)
+	{
+		PlayPlayerBeingGrabbedHold();
+		return;
+	}
+
+	ActiveBeingGrabbedStartMontage = GrabConfig.BeingGrabbedStartMontage;
+
+	FOnMontageEnded MontageEndedDelegate;
+
+	MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleBeingGrabbedStartMontageEnded);
+
+	AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveBeingGrabbedStartMontage);
+}
+
+void ADongincheonCharacter::HandleBeingGrabbedStartMontageEnded(UAnimMontage* Montage,bool bInterrupted)
+{
+	if (!IsValid(Montage) || Montage != ActiveBeingGrabbedStartMontage)
+	{
+		return;
+	}
+
+	ActiveBeingGrabbedStartMontage = nullptr;
+
+	if (bInterrupted)
+	{
+		return;
+	}
+
+	if (!IsValid(GrabComponent) || !GrabComponent->IsBeingGrabbed())
+	{
+		return;
+	}
+
+	PlayPlayerBeingGrabbedHold();
+}
+
+void ADongincheonCharacter::PlayPlayerBeingGrabbedHold()
+{
+	if (!IsValid(GrabComponent) || !GrabComponent->IsBeingGrabbed() || !IsValid(GetMesh()) ||
+		!IsValid(GrabConfig.BeingGrabbedHoldMontage))
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		return;
+	}
+
+	const float SafePlayRate = GrabConfig.GrabPlayRate > 0.0f ? GrabConfig.GrabPlayRate : 1.0f;
+
+	const float MontageResult = AnimInstance->Montage_Play(GrabConfig.BeingGrabbedHoldMontage,SafePlayRate);
+
+	if (MontageResult <= 0.0f)
+	{
+		return;
+	}
+
+	ActiveBeingGrabbedHoldMontage = GrabConfig.BeingGrabbedHoldMontage;
+}
+
+void ADongincheonCharacter::HandleGrabAttackReceived(float Damage,AActor* DamageCauser)
+{
+	if (Damage <= 0.0f || !IsValid(DamageCauser) || !IsValid(GrabComponent) || !GrabComponent->IsBeingGrabbed())
+	{
+		return;
+	}
+
+	if (!IsValid(HealthComponent) || HealthComponent->IsDead() || bPlayerDeathStarted)
+	{
+		return;
+	}
+
+	StartPlayerBeingGrabbedHitReact();
+}
+
+void ADongincheonCharacter::StartPlayerBeingGrabbedHitReact()
+{
+	if (!IsValid(GrabComponent) || !GrabComponent->IsBeingGrabbed() || !IsValid(GetMesh()) 
+		|| !IsValid(GrabConfig.BeingGrabbedHitReactMontage))
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		return;
+	}
+
+	if (IsValid(ActiveBeingGrabbedHitReactMontage) && AnimInstance->Montage_IsPlaying(ActiveBeingGrabbedHitReactMontage))
+	{
+		return;
+	}
+
+	if (IsValid(ActiveBeingGrabbedHoldMontage))
+	{
+		AnimInstance->Montage_Stop(0.05f,ActiveBeingGrabbedHoldMontage);
+
+		ActiveBeingGrabbedHoldMontage = nullptr;
+	}
+
+	const float SafePlayRate = GrabConfig.GrabPlayRate > 0.0f ? GrabConfig.GrabPlayRate : 1.0f;
+
+	const float MontageResult = AnimInstance->Montage_Play(GrabConfig.BeingGrabbedHitReactMontage,SafePlayRate);
+
+	if (MontageResult <= 0.0f)
+	{
+		PlayPlayerBeingGrabbedHold();
+		return;
+	}
+
+	ActiveBeingGrabbedHitReactMontage = GrabConfig.BeingGrabbedHitReactMontage;
+
+	FOnMontageEnded MontageEndedDelegate;
+
+	MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleBeingGrabbedHitReactMontageEnded);
+
+	AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveBeingGrabbedHitReactMontage);
+}
+
+void ADongincheonCharacter::HandleBeingGrabbedHitReactMontageEnded(UAnimMontage* Montage,bool bInterrupted)
+{
+	if (!IsValid(Montage) || Montage != ActiveBeingGrabbedHitReactMontage)
+	{
+		return;
+	}
+
+	ActiveBeingGrabbedHitReactMontage = nullptr;
+
+	if (!IsValid(HealthComponent) || HealthComponent->IsDead() || bPlayerDeathStarted)
+	{
+		return;
+	}
+
+	if (!IsValid(GrabComponent) || !GrabComponent->IsBeingGrabbed())
+	{
+		return;
+	}
+
+	PlayPlayerBeingGrabbedHold();
+}
+
+void ADongincheonCharacter::CancelPlayerGrab(float BlendOutTime)
+{
+	StopPlayerGrabHold(BlendOutTime);
+	
+	if (IsValid(GrabComponent))
+	{
+		GrabComponent->ForceRelease();
+	}
+
+	if (!IsValid(GetMesh()))
+	{
+		ActiveGrabStartMontage = nullptr;
+		ActiveGrabAttackMontage = nullptr;
+		ActiveGrabReleaseMontage = nullptr;
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		ActiveGrabStartMontage = nullptr;
+		ActiveGrabAttackMontage = nullptr;
+		ActiveGrabReleaseMontage = nullptr;
+		return;
+	}
+
+	const float SafeBlendOutTime = FMath::Max(0.0f,BlendOutTime);
+
+	if (IsValid(ActiveGrabStartMontage))
+	{
+		UAnimMontage* MontageToStop = ActiveGrabStartMontage;
+
+		FOnMontageEnded EmptyEndDelegate;
+		AnimInstance->Montage_SetEndDelegate(EmptyEndDelegate,MontageToStop);
+
+		ActiveGrabStartMontage = nullptr;
+
+		AnimInstance->Montage_Stop(SafeBlendOutTime,MontageToStop);
+	}
+
+	if (IsValid(ActiveGrabAttackMontage))
+	{
+		UAnimMontage* MontageToStop = ActiveGrabAttackMontage;
+
+		FOnMontageEnded EmptyEndDelegate;
+		AnimInstance->Montage_SetEndDelegate(EmptyEndDelegate,MontageToStop);
+
+		ActiveGrabAttackMontage = nullptr;
+
+		AnimInstance->Montage_Stop(SafeBlendOutTime,MontageToStop);
+	}
+
+	if (IsValid(ActiveGrabReleaseMontage))
+	{
+		UAnimMontage* MontageToStop = ActiveGrabReleaseMontage;
+
+		FOnMontageEnded EmptyEndDelegate;
+		AnimInstance->Montage_SetEndDelegate(EmptyEndDelegate,MontageToStop);
+
+		ActiveGrabReleaseMontage = nullptr;
+
+		AnimInstance->Montage_Stop(SafeBlendOutTime,MontageToStop);
+	}
 }
 
 void ADongincheonCharacter::StartPlayerDodge()
@@ -1136,6 +1876,7 @@ void ADongincheonCharacter::StartPlayerHitReact()
 	
 	CancelPlayerAttack(0.05f);
 	CancelPlayerDodge(0.05f);
+	CancelPlayerGrab(0.05f);
 	StopPlayerGuard(0.05f);
 	
 	if (IsValid(ActiveGuardBreakMontage) && IsValid(GetMesh()))
@@ -1273,6 +2014,7 @@ void ADongincheonCharacter::StartPlayerDeath()
 	
 	CancelPlayerAttack(0.0f);
 	CancelPlayerDodge(0.0f);
+	CancelPlayerGrab(0.05f);
 	StopPlayerGuard(0.0f);
 	
 	bGuardInputHeld = false;

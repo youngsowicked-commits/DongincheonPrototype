@@ -14,6 +14,13 @@
  * 
  */
 
+UENUM(BlueprintType)
+enum class EDIEnemyGrabPolicy : uint8
+{
+	Holdable,
+	BreakFree
+};
+
 USTRUCT(BlueprintType)
 struct DONGINCHEONPROTOTYPE_API FDIAttackPattern
 {
@@ -25,6 +32,7 @@ struct DONGINCHEONPROTOTYPE_API FDIAttackPattern
 	UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Attack Pattern", meta = (ClampMin = "0.0"))
 	float Weight = 1.0f;
 };
+
 UCLASS(BlueprintType)
 class DONGINCHEONPROTOTYPE_API UDIEnemyDefinition : public UDataAsset
 {
@@ -45,4 +53,7 @@ public:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Death")
 	FDeathConfig Death;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Gameplay|Grab")
+	EDIEnemyGrabPolicy GrabPolicy = EDIEnemyGrabPolicy::Holdable;
 };

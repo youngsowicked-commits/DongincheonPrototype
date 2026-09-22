@@ -23,6 +23,13 @@ public:
 	void SendHitReactEvent();
 	void SendDeadEvent();
 	void SendGuardBrokenEvent();
+	
+	void SendGrabbedEvent();
+	void SendGrabReleasedEvent();
+	
+	void SendHeatActionVictimEvent();
+	void SendHeatActionVictimReleasedEvent();
+	
 	AActor* GetCombatTarget() const
 	{
 		return CombatTarget.Get();

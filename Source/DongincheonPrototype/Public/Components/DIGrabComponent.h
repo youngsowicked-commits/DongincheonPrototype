@@ -21,10 +21,8 @@ enum class EDIGrabState : uint8
     BeingGrabbed
 };
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
-    FDIGrabStateChangedSignature,
-    EDIGrabState, PreviousState,
-    EDIGrabState, NewState);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDIGrabStateChangedSignature,EDIGrabState, PreviousState,EDIGrabState, NewState);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDIGrabAttackReceivedSignature,float, Damage,AActor*, DamageCauser);
 
 UCLASS(ClassGroup=(DI), meta=(BlueprintSpawnableComponent))
 class DONGINCHEONPROTOTYPE_API UDIGrabComponent : public UActorComponent
@@ -39,10 +37,12 @@ public:
 
     bool BeginGrab(AActor* Target);
 
-    void CompleteGrabStart();
-
-    bool BeginGrabAttack();
-
+    void CompleteGrabStart(float HoldDistance,float VictimYawOffset);
+    
+    bool BeginGrabAttack(float Damage);
+    
+    void ProcessGrabAttackHit();
+    
     void EndGrabAttack();
 
     bool BeginReleaseGrab();
@@ -82,6 +82,9 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Grab")
     FDIGrabStateChangedSignature OnGrabStateChanged;
+    
+    UPROPERTY(BlueprintAssignable, Category = "Grab")
+    FDIGrabAttackReceivedSignature OnGrabAttackReceived;
 
 private:
     bool CanAcceptGrab(AActor* Grabber) const;
@@ -91,6 +94,10 @@ private:
     void SetGrabState(EDIGrabState NewState);
 
     void ClearGrabState();
+    
+    void DetachFromGrabber();
+    
+    void ReceiveGrabAttackHit(float Damage, AActor* DamageCauser);
 
 private:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grab",
@@ -106,4 +113,6 @@ private:
 
     UPROPERTY(Transient)
     EDIGrabState GrabState = EDIGrabState::None;
+    
+    float ActiveGrabAttackDamage = 0.0f;
 };
