@@ -55,6 +55,8 @@ void UTargetingComponent::TryLockOn()
 	
 	CurrentTarget = BestTarget;
 	
+	OnLockOnTargetChanged.Broadcast(CurrentTarget.Get());
+	
 	if (UCharacterMovementComponent* Movement = OwnerCharacter->GetCharacterMovement())
 	{
 		Movement->bOrientRotationToMovement = false;
@@ -66,6 +68,8 @@ void UTargetingComponent::TryLockOn()
 void UTargetingComponent::ClearLockOn()
 {
 	CurrentTarget.Reset();
+	
+	OnLockOnTargetChanged.Broadcast(nullptr);
 	
 	if (IsValid(OwnerCharacter))
 	{
@@ -103,6 +107,182 @@ bool UTargetingComponent::IsLockedOn() const
 AActor* UTargetingComponent::GetLockOnTarget() const
 {
 	return CurrentTarget.Get();
+}
+
+void UTargetingComponent::SwitchTarget(float Direction)
+{
+    if (!IsValid(OwnerCharacter))
+    {
+        return;
+    }
+
+    if (!CurrentTarget.IsValid())
+    {
+        return;
+    }
+
+    if (FMath::IsNearlyZero(Direction))
+    {
+        return;
+    }
+
+    UWorld* World = GetWorld();
+
+    if (!IsValid(World))
+    {
+        return;
+    }
+
+    APlayerController* PlayerController = Cast<APlayerController>(OwnerCharacter->GetController());
+
+    if (!IsValid(PlayerController))
+    {
+        return;
+    }
+
+    AActor* CurrentActor = CurrentTarget.Get();
+
+    if (!IsValidLockOnTarget(CurrentActor))
+    {
+        ClearLockOn();
+        return;
+    }
+
+    FVector CameraLocation;
+    FRotator CameraRotation;
+
+    PlayerController->GetPlayerViewPoint(CameraLocation,CameraRotation);
+
+    const FVector CameraForward = CameraRotation.Vector();
+    const FVector CameraRight = CameraRotation.RotateVector(FVector::RightVector);
+
+    FVector CurrentDirection = CurrentActor->GetActorLocation() - CameraLocation;
+
+    if (!CurrentDirection.Normalize())
+    {
+        return;
+    }
+
+    const float CurrentAngle = FMath::Atan2(FVector::DotProduct(CameraRight, CurrentDirection),
+        FVector::DotProduct(CameraForward, CurrentDirection));
+
+    FCollisionObjectQueryParams ObjectQueryParams;
+    ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
+
+    FCollisionQueryParams QueryParams;
+    QueryParams.AddIgnoredActor(OwnerCharacter);
+
+    TArray<FOverlapResult> Overlaps;
+
+    const bool bFoundAny = World->OverlapMultiByObjectType(
+        Overlaps,
+        OwnerCharacter->GetActorLocation(),
+        FQuat::Identity,
+        ObjectQueryParams,
+        FCollisionShape::MakeSphere(LockOnRange),
+        QueryParams
+    );
+
+    if (!bFoundAny)
+    {
+        return;
+    }
+
+    AActor* BestTarget = nullptr;
+    float BestAngularDistance = BIG_NUMBER;
+
+    TSet<AActor*> ProcessedActors;
+
+    for (const FOverlapResult& Overlap : Overlaps)
+    {
+        AActor* Candidate = Overlap.GetActor();
+
+        if (!IsValid(Candidate))
+        {
+            continue;
+        }
+
+        if (Candidate == CurrentActor)
+        {
+            continue;
+        }
+
+        if (ProcessedActors.Contains(Candidate))
+        {
+            continue;
+        }
+
+        ProcessedActors.Add(Candidate);
+
+        if (!IsValidLockOnTarget(Candidate))
+        {
+            continue;
+        }
+
+        const float Distance = FVector::Dist(OwnerCharacter->GetActorLocation(),Candidate->GetActorLocation());
+
+        if (Distance > LockOnRange)
+        {
+            continue;
+        }
+
+        FVector DirectionToTarget = Candidate->GetActorLocation() - CameraLocation;
+
+        if (!DirectionToTarget.Normalize())
+        {
+            continue;
+        }
+
+        const float CameraDot = FVector::DotProduct(CameraForward,DirectionToTarget);
+
+        if (CameraDot <= MinCameraDot)
+        {
+            continue;
+        }
+
+        const float CandidateAngle = FMath::Atan2(FVector::DotProduct(CameraRight, DirectionToTarget),
+            FVector::DotProduct(CameraForward, DirectionToTarget));
+
+        float DeltaAngle = FMath::FindDeltaAngleRadians(CurrentAngle,CandidateAngle);
+
+        float AngularDistance = 0.0f;
+
+        if (Direction > 0.0f)
+        {
+            // 오른쪽 방향. 끝까지 갔으면 반대편으로 순환.
+            if (DeltaAngle <= KINDA_SMALL_NUMBER)
+            {
+                DeltaAngle += 2.0f * PI;
+            }
+
+            AngularDistance = DeltaAngle;
+        }
+        else
+        {
+            // 왼쪽 방향. 끝까지 갔으면 반대편으로 순환.
+            if (DeltaAngle >= -KINDA_SMALL_NUMBER)
+            {
+                DeltaAngle -= 2.0f * PI;
+            }
+
+            AngularDistance = -DeltaAngle;
+        }
+
+        if (AngularDistance < BestAngularDistance)
+        {
+            BestAngularDistance = AngularDistance;
+            BestTarget = Candidate;
+        }
+    }
+
+    if (!IsValid(BestTarget))
+    {
+        return;
+    }
+
+    CurrentTarget = BestTarget;
+
+    OnLockOnTargetChanged.Broadcast(CurrentTarget.Get());
 }
 
 AActor* UTargetingComponent::FindBestLockOnTarget() const

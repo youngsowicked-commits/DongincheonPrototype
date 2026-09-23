@@ -119,7 +119,36 @@ void UHealthComponent::BeginPlay()
 	Super::BeginPlay();
 	
 	MaxHealth = FMath::Max(MaxHealth, 1.0f);
+	
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("[HEALTH BEGIN BEFORE] Owner=%s Comp=%s Ptr=%p Current=%.1f Max=%.1f"),
+		*GetNameSafe(GetOwner()),
+		*GetName(),
+		this,
+		CurrentHealth,
+		MaxHealth
+	);
+
+	const float OldHealth = CurrentHealth;
+
 	CurrentHealth = MaxHealth;
+
+	
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("[HEALTH BEGIN AFTER] Owner=%s Comp=%s Ptr=%p Current=%.1f Max=%.1f"),
+		*GetNameSafe(GetOwner()),
+		*GetName(),
+		this,
+		CurrentHealth,
+		MaxHealth
+	);
+	OnHealthChanged.Broadcast(OldHealth, CurrentHealth, MaxHealth);
+
+	
 	bIsDead = false;
 	bDamageEnalbe = true;
 	

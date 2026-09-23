@@ -12,6 +12,14 @@ class ATargetPoint;
 class ADongincheonEnemyBase;
 class ADongincheonCharacter;
 
+UENUM(BlueprintType)
+enum class EDIEncounterHUDType : uint8
+{
+	None,
+	Enemy,
+	Boss
+};
+
 USTRUCT(BlueprintType)
 struct FDIBattleHealthTrigger
 {
@@ -104,6 +112,9 @@ protected:
 	//Cinematic,Placeholder 종료시 BP에서 StartCombat()g 호출
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Flow")
 	bool bAutoStartCombat = true;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|HUD")
+	EDIEncounterHUDType HUDType = EDIEncounterHUDType::Enemy;
 
 	//체력이 임계점 아래로 최초 진입했을 떄 호출
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Flow")
@@ -188,6 +199,9 @@ private:
 	
 	UFUNCTION()
 	void HandleEnemyDeath(AActor* DamageCauser);
+	
+	void ShowEncounterHUD();
+	void HideEncounterHUD();
 	
 	void SpawnEnemies();
 	void CompleteEncounter();

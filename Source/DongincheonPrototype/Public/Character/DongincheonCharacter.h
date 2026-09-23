@@ -8,6 +8,7 @@
 #include "Gameplay/Data/DIGuardData.h"
 #include "Gameplay/Data/DIGrabData.h"
 #include "Gameplay/Data/DIHeatActionData.h"
+#include "Player/DIPlayerController.h"
 #include "Components/QTEComponent.h"
 #include "DongincheonCharacter.generated.h"
 
@@ -107,6 +108,8 @@ protected:
 	//Input
 	void HandleLockOnStarted(const FInputActionValue& Value);
 	void HandleLockOnEnded(const FInputActionValue& Value);
+	
+	void HandleLockOnSwitch(const FInputActionValue& Value);
 	
 	void HandleMoveInputStartedOrTriggered(const FInputActionValue& Value);
 	void HandleMoveInputCompleted(const FInputActionValue& Value);
@@ -280,6 +283,8 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> LockOnAction;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> LockOnSwitchAction;
 
 	//Dodge Content
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Dodge")

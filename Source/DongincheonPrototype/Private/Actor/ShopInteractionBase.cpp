@@ -39,56 +39,79 @@ AShopInteractionBase::AShopInteractionBase()
 
 void AShopInteractionBase::Interact_Implementation(AActor* Interactor)
 {
-	ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(Interactor);
+    UE_LOG(LogTemp, Warning, TEXT("SHOP: Interact called"));
 
-	if (!IsValid(Player))
-	{
-		return;
-	}
+    ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(Interactor);
 
-	if (InteractionState != EShopInteractionState::Idle)
-	{
-		return;
-	}
+    if (!IsValid(Player))
+    {
+        UE_LOG(LogTemp, Error, TEXT("SHOP FAIL: Invalid Player"));
+        return;
+    }
 
-	if (Player->IsGameplayInputLocked())
-	{
-		return;
-	}
+    if (InteractionState != EShopInteractionState::Idle)
+    {
+        UE_LOG(LogTemp, Error, TEXT("SHOP FAIL: State is not Idle"));
+        return;
+    }
 
-	APlayerController* PlayerController = Cast<APlayerController>(Player->GetController());
+    if (Player->IsGameplayInputLocked())
+    {
+        UE_LOG(LogTemp, Error, TEXT("SHOP FAIL: Gameplay Input already locked"));
+        return;
+    }
 
-	if (!IsValid(PlayerController))
-	{
-		return;
-	}
+    APlayerController* PlayerController = Cast<APlayerController>(Player->GetController());
 
-	InteractionState = EShopInteractionState::Entering;
-	ActiveInteractor = Player;
-	PreviousViewTarget = PlayerController->GetViewTarget();
+    if (!IsValid(PlayerController))
+    {
+        UE_LOG(LogTemp, Error, TEXT("SHOP FAIL: Invalid PlayerController"));
+        return;
+    }
 
-	Player->SetInteractionInputLocked(true);
+    InteractionState = EShopInteractionState::Entering;
+    ActiveInteractor = Player;
+    PreviousViewTarget = PlayerController->GetViewTarget();
 
-	if (!AlignInteractorToPoint(Player))
-	{
-		Player->SetInteractionInputLocked(false);
-		ActiveInteractor = nullptr;
-		PreviousViewTarget = nullptr;
-		InteractionState = EShopInteractionState::Idle;
-		return;
-	}
+    Player->SetInteractionInputLocked(true);
 
-	PlayerController->SetViewTargetWithBlend(this, InteractionCameraBlendTime,
-		VTBlend_Cubic, 2.0f, false);
+    if (!AlignInteractorToPoint(Player))
+    {
+        UE_LOG(LogTemp, Error, TEXT("SHOP FAIL: Alignment failed"));
 
-	if (InteractionCameraBlendTime <= 0.0f)
-	{
-		FinishShopInteractionEnter();
-		return;
-	}
+        Player->SetInteractionInputLocked(false);
+        ActiveInteractor = nullptr;
+        PreviousViewTarget = nullptr;
+        InteractionState = EShopInteractionState::Idle;
+        return;
+    }
 
-	GetWorldTimerManager().SetTimer(InteractionTransitionTimerHandle, this,
-		&AShopInteractionBase::FinishShopInteractionEnter, InteractionCameraBlendTime, false);
+    UE_LOG(LogTemp, Warning, TEXT("SHOP: Alignment PASS | BlendTime=%.2f"), InteractionCameraBlendTime);
+
+    PlayerController->SetViewTargetWithBlend(
+        this,
+        InteractionCameraBlendTime,
+        VTBlend_Cubic,
+        2.0f,
+        false
+    );
+
+    if (InteractionCameraBlendTime <= 0.0f)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("SHOP: Immediate Finish Enter"));
+        FinishShopInteractionEnter();
+        return;
+    }
+
+    GetWorldTimerManager().SetTimer(
+        InteractionTransitionTimerHandle,
+        this,
+        &AShopInteractionBase::FinishShopInteractionEnter,
+        InteractionCameraBlendTime,
+        false
+    );
+
+    UE_LOG(LogTemp, Warning, TEXT("SHOP: Enter timer started"));
 }
 
 FText AShopInteractionBase::GetInteractionText_Implementation() const
@@ -114,23 +137,55 @@ bool AShopInteractionBase::AlignInteractorToPoint(AActor* Interactor)
 	}
 
 	const FTransform TargetTransform = InteractionPoint->GetComponentTransform();
-	FHitResult SweepHit;
 
-	return Interactor->SetActorLocationAndRotation(TargetTransform.GetLocation(),
-		TargetTransform.Rotator(), true, &SweepHit, ETeleportType::None);
+	Interactor->SetActorLocationAndRotation(TargetTransform.GetLocation(),TargetTransform.Rotator(),false,
+		nullptr,ETeleportType::TeleportPhysics
+	);
+
+	constexpr float AlignmentTolerance = 5.0f;
+
+	return FVector::DistSquared(Interactor->GetActorLocation(),TargetTransform.GetLocation()) <= FMath::Square(AlignmentTolerance);
 }
 
 bool AShopInteractionBase::TryPurchaseFood(FName FoodId)
 {
-	if (InteractionState != EShopInteractionState::Active || !IsValid(ActiveInteractor))
+	UE_LOG(LogTemp, Warning,
+		TEXT("SHOP PURCHASE: Called | FoodId=%s"),
+		*FoodId.ToString());
+
+	if (InteractionState != EShopInteractionState::Active)
 	{
+		UE_LOG(LogTemp, Error,
+			TEXT("SHOP PURCHASE FAIL: State is not Active"));
+		return false;
+	}
+
+	if (!IsValid(ActiveInteractor))
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("SHOP PURCHASE FAIL: Invalid ActiveInteractor"));
 		return false;
 	}
 
 	const FDIShopFoodDefinition* FoodDefinition = FindFoodDefinition(FoodId);
 
-	if (!FoodDefinition || FoodDefinition->HealAmount <= 0.0f)
+	if (!FoodDefinition)
 	{
+		UE_LOG(LogTemp, Error,
+			TEXT("SHOP PURCHASE FAIL: FoodId not found | FoodId=%s"),
+			*FoodId.ToString());
+		return false;
+	}
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("SHOP PURCHASE: Food found | FoodId=%s | Heal=%.1f"),
+		*FoodDefinition->FoodId.ToString(),
+		FoodDefinition->HealAmount);
+
+	if (FoodDefinition->HealAmount <= 0.0f)
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("SHOP PURCHASE FAIL: HealAmount <= 0"));
 		return false;
 	}
 
@@ -138,10 +193,20 @@ bool AShopInteractionBase::TryPurchaseFood(FName FoodId)
 
 	if (!IsValid(HealthComponent))
 	{
+		UE_LOG(LogTemp, Error,
+			TEXT("SHOP PURCHASE FAIL: HealthComponent not found"));
 		return false;
 	}
 
+	UE_LOG(LogTemp, Warning,
+		TEXT("SHOP PURCHASE: Calling Heal %.1f"),
+		FoodDefinition->HealAmount);
+
 	HealthComponent->Heal(FoodDefinition->HealAmount);
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("SHOP PURCHASE: Heal call finished"));
+
 	return true;
 }
 
@@ -238,6 +303,7 @@ void AShopInteractionBase::RestoreGameplayInputMode()
 
 void AShopInteractionBase::FinishShopInteractionEnter()
 {
+	UE_LOG(LogTemp, Warning, TEXT("SHOP: FinishShopInteractionEnter called"));
 	if (InteractionState != EShopInteractionState::Entering)
 	{
 		return;

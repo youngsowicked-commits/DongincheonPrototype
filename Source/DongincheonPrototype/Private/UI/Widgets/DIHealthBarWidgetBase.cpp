@@ -1,12 +1,13 @@
 ﻿#include "UI/Widgets/DIHealthBarWidgetBase.h"
 
-#include "Components/HealthComponent.h"
-#include "Components/ProgressBar.h"
+#include "Components/Image.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 void UDIHealthBarWidgetBase::SetHealthSource(UHealthComponent* InHealthComponent)
 {
     if (HealthSource == InHealthComponent)
     {
+        EnsureDynamicMaterial();
         RefreshHealthBar();
         return;
     }
@@ -15,6 +16,7 @@ void UDIHealthBarWidgetBase::SetHealthSource(UHealthComponent* InHealthComponent
 
     HealthSource = InHealthComponent;
 
+    EnsureDynamicMaterial();
     BindHealthSource();
     RefreshHealthBar();
 }
@@ -37,6 +39,7 @@ void UDIHealthBarWidgetBase::NativeConstruct()
 {
     Super::NativeConstruct();
 
+    EnsureDynamicMaterial();
     BindHealthSource();
     RefreshHealthBar();
 }
@@ -48,9 +51,77 @@ void UDIHealthBarWidgetBase::NativeDestruct()
     Super::NativeDestruct();
 }
 
-void UDIHealthBarWidgetBase::HandleHealthChanged(float OldHealth,float NewHealth,float MaxHealth)
+void UDIHealthBarWidgetBase::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
-    RefreshHealthBar();
+    Super::NativeTick(MyGeometry, InDeltaTime);
+
+    if (!bDamageLagAnimating || !IsValid(HPDamageLagMID))
+    {
+        return;
+    }
+
+    if (DamageLagDelayRemaining > 0.0f)
+    {
+        DamageLagDelayRemaining -= InDeltaTime;
+        return;
+    }
+
+    DamageLagAnimationElapsed += InDeltaTime;
+
+    const float SafeDuration = FMath::Max(DamageLagDuration, KINDA_SMALL_NUMBER);
+    const float Alpha = FMath::Clamp(DamageLagAnimationElapsed / SafeDuration, 0.0f, 1.0f);
+
+    DamageLagCurrentPercent = FMath::Lerp(DamageLagStartPercent,DamageLagTargetPercent,Alpha);
+
+    HPDamageLagMID->SetScalarParameterValue(TEXT("Progress"), DamageLagCurrentPercent);
+
+    if (Alpha >= 1.0f)
+    {
+        DamageLagCurrentPercent = DamageLagTargetPercent;
+        bDamageLagAnimating = false;
+    }
+}
+
+void UDIHealthBarWidgetBase::HandleHealthChanged(float OldHealth, float NewHealth, float MaxHealth)
+{
+    if (MaxHealth <= 0.0f)
+    {
+        return;
+    }
+
+    EnsureDynamicMaterial();
+
+    const float NewPercent = FMath::Clamp(NewHealth / MaxHealth, 0.0f, 1.0f);
+
+    if (IsValid(HPMainMID))
+    {
+        HPMainMID->SetScalarParameterValue(TEXT("Progress"), NewPercent);
+    }
+
+    // Damage
+    if (NewHealth < OldHealth)
+    {
+        DamageLagStartPercent = DamageLagCurrentPercent;
+        DamageLagTargetPercent = NewPercent;
+        DamageLagDelayRemaining = DamageLagDelay;
+        DamageLagAnimationElapsed = 0.0f;
+        bDamageLagAnimating = true;
+
+        return;
+    }
+
+    // Heal 또는 기타 증가
+    DamageLagCurrentPercent = NewPercent;
+    DamageLagStartPercent = NewPercent;
+    DamageLagTargetPercent = NewPercent;
+    DamageLagDelayRemaining = 0.0f;
+    DamageLagAnimationElapsed = 0.0f;
+    bDamageLagAnimating = false;
+
+    if (IsValid(HPDamageLagMID))
+    {
+        HPDamageLagMID->SetScalarParameterValue(TEXT("Progress"), NewPercent);
+    }
 }
 
 void UDIHealthBarWidgetBase::HandleMaxHealthChanged(float OldMaxHealth,float NewMaxHealth,float CurrentHealth)
@@ -84,18 +155,42 @@ void UDIHealthBarWidgetBase::UnbindHealthSource()
 
 void UDIHealthBarWidgetBase::RefreshHealthBar()
 {
-    if (!IsValid(HealthProgressBar))
-    {
-        return;
-    }
-
     if (!IsValid(HealthSource))
     {
-        HealthProgressBar->SetPercent(0.0f);
         return;
     }
 
-    const float HealthPercent = FMath::Clamp(HealthSource->GetHealthNormalized(),0.0f,1.0f);
+    EnsureDynamicMaterial();
 
-    HealthProgressBar->SetPercent(HealthPercent);
+    const float HealthPercent = HealthSource->GetHealthNormalized();
+
+    if (IsValid(HPMainMID))
+    {
+        HPMainMID->SetScalarParameterValue(TEXT("Progress"), HealthPercent);
+    }
+
+    DamageLagCurrentPercent = HealthPercent;
+    DamageLagStartPercent = HealthPercent;
+    DamageLagTargetPercent = HealthPercent;
+    DamageLagDelayRemaining = 0.0f;
+    DamageLagAnimationElapsed = 0.0f;
+    bDamageLagAnimating = false;
+
+    if (IsValid(HPDamageLagMID))
+    {
+        HPDamageLagMID->SetScalarParameterValue(TEXT("Progress"), HealthPercent);
+    }
+}
+
+void UDIHealthBarWidgetBase::EnsureDynamicMaterial()
+{
+    if (!IsValid(HPMainMID) && IsValid(HPMainImage))
+    {
+        HPMainMID = HPMainImage->GetDynamicMaterial();
+    }
+
+    if (!IsValid(HPDamageLagMID) && IsValid(HPDamageLagImage))
+    {
+        HPDamageLagMID = HPDamageLagImage->GetDynamicMaterial();
+    }
 }

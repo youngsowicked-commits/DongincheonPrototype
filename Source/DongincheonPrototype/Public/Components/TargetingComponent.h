@@ -7,6 +7,8 @@
 class AActor;
 class ACharacter;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLockOnTargetChangedSignature,AActor*, NewTarget);
+
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class DONGINCHEONPROTOTYPE_API UTargetingComponent : public UActorComponent
 {
@@ -30,6 +32,12 @@ public:
 	
 	UFUNCTION(BlueprintPure, Category="Targeting")
 	AActor* GetLockOnTarget() const;
+	
+	UFUNCTION(BlueprintCallable, Category = "Targeting")
+	void SwitchTarget(float Direction);
+	
+	UPROPERTY(BlueprintAssignable, Category = "Targeting")
+	FOnLockOnTargetChangedSignature OnLockOnTargetChanged;
 	
 private:
 	AActor* FindBestLockOnTarget() const;

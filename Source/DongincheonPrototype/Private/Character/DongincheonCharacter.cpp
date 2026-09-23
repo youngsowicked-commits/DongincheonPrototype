@@ -109,6 +109,38 @@ void ADongincheonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		EnhancedInput->BindAction(LockOnAction,ETriggerEvent::Completed,this,&ADongincheonCharacter::HandleLockOnEnded);
 		EnhancedInput->BindAction(LockOnAction,ETriggerEvent::Canceled,this,&ADongincheonCharacter::HandleLockOnEnded);
 	}
+	
+	if (IsValid(LockOnSwitchAction))
+	{
+		EnhancedInput->BindAction(LockOnSwitchAction,ETriggerEvent::Triggered,this,&ADongincheonCharacter::HandleLockOnSwitch);
+	}
+}
+
+void ADongincheonCharacter::HandleLockOnSwitch(const FInputActionValue& Value)
+{
+	if (IsGameplayInputLocked())
+	{
+		return;
+	}
+
+	if (!IsValid(TargetingComponent))
+	{
+		return;
+	}
+
+	if (!TargetingComponent->IsLockedOn())
+	{
+		return;
+	}
+
+	const float Direction = Value.Get<float>();
+
+	if (FMath::IsNearlyZero(Direction))
+	{
+		return;
+	}
+
+	TargetingComponent->SwitchTarget(Direction);
 }
 
 void ADongincheonCharacter::HandleLockOnStarted(const FInputActionValue& Value)
@@ -2211,6 +2243,15 @@ void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor, FVector H
 	{
 		return;
 	}
+	
+	if (IsValid(HitActor))
+	{
+		if (ADIPlayerController* DIPlayerController = Cast<ADIPlayerController>(GetController()))
+		{
+			DIPlayerController->ShowEnemyHUD(HitActor);
+		}
+	}
+
 	
 	//동일 타격에서 여러 Actor가 잡혀도 HitStop이 중복 시작되지 않게 한다.
 	if (bHitStopActive)

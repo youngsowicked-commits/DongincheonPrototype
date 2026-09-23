@@ -2,6 +2,8 @@
 
 #include "Character/DongincheonCharacter.h"
 #include "Character/DongincheonEnemyBase.h"
+#include "Player/DIPlayerController.h"
+#include "UI/DIHUDTypes.h"
 #include "Components/QTEComponent.h"
 #include "Components/HealthComponent.h"
 #include "AI/DongincheonAIController.h"
@@ -218,6 +220,108 @@ void ADIBattleEncounter::StartEncounter()
 	}
 }
 
+void ADIBattleEncounter::ShowEncounterHUD()
+{
+	ADIPlayerController* PlayerController =
+		Cast<ADIPlayerController>(UGameplayStatics::GetPlayerController(this, 0));
+
+	if (!IsValid(PlayerController))
+	{
+		return;
+	}
+	
+	UE_LOG(
+	LogDIBattleEncounter,
+	Warning,
+	TEXT("HUD DEBUG | Encounter=%s | HUDType=%d | SpawnedEnemies=%d"),
+	*GetName(),
+	static_cast<int32>(HUDType),
+	SpawnedEnemies.Num()
+);
+
+	ADongincheonEnemyBase* HUDTarget = nullptr;
+
+	for (ADongincheonEnemyBase* Enemy : SpawnedEnemies)
+	{
+		if (IsValid(Enemy))
+		{
+			HUDTarget = Enemy;
+			break;
+		}
+	}
+
+	if (!IsValid(HUDTarget))
+	{
+		return;
+	}
+	
+	UE_LOG(
+	LogDIBattleEncounter,
+	Warning,
+	TEXT("HUD DEBUG | Target=%s"),
+	*GetNameSafe(HUDTarget)
+);
+
+	switch (HUDType)
+	{
+	case EDIEncounterHUDType::Enemy:
+		{
+			PlayerController->HideBossHUD();
+			PlayerController->ShowEnemyHUD(HUDTarget);
+			break;
+		}
+
+	case EDIEncounterHUDType::Boss:
+		{
+			PlayerController->HideEnemyHUD();
+			PlayerController->ShowBossHUD(HUDTarget);
+			break;
+		}
+
+	case EDIEncounterHUDType::None:
+	default:
+		{
+			PlayerController->HideEnemyHUD();
+			PlayerController->HideBossHUD();
+			break;
+		}
+	}
+}
+
+void ADIBattleEncounter::HideEncounterHUD()
+{
+	ADIPlayerController* PlayerController =
+		Cast<ADIPlayerController>(UGameplayStatics::GetPlayerController(this, 0));
+
+	if (!IsValid(PlayerController))
+	{
+		return;
+	}
+
+	switch (HUDType)
+	{
+	case EDIEncounterHUDType::Enemy:
+		{
+			PlayerController->HideEnemyHUD();
+			break;
+		}
+
+	case EDIEncounterHUDType::Boss:
+		{
+			PlayerController->HideBossHUD();
+			break;
+		}
+
+	case EDIEncounterHUDType::None:
+	default:
+		{
+			PlayerController->HideEnemyHUD();
+			PlayerController->HideBossHUD();
+			break;
+		}
+	}
+}
+
 void ADIBattleEncounter::StartCombat()
 {
 	if (!bStarted || bCompleted || bCombatStarted)
@@ -229,6 +333,8 @@ void ADIBattleEncounter::StartCombat()
 	bCombatPausedForPresentation = false;
 
 	UE_LOG(LogDIBattleEncounter, Log, TEXT("Combat START: %s"), *GetName());
+	
+	ShowEncounterHUD();
 
 	for (ADongincheonEnemyBase* Enemy : SpawnedEnemies)
 	{
@@ -324,7 +430,7 @@ void ADIBattleEncounter::ResumeCombatFromPresentation()
 	{
 		if (!IsValid(Enemy))
 		{
-			continue;;
+			continue;
 		}
 
 		ADongincheonAIController* AIController = Cast<ADongincheonAIController>(Enemy->GetController());
@@ -343,6 +449,11 @@ void ADIBattleEncounter::ResumeCombatFromPresentation()
 	}
 
 	ReleasePresentationPlayerLock();
+	
+	if (ADIPlayerController* PlayerController = Cast<ADIPlayerController>(UGameplayStatics::GetPlayerController(this, 0)))
+	{
+		PlayerController->SetHUDContext(EDIHUDContext::Gameplay);
+	}
 
 	UE_LOG(LogDIBattleEncounter, Log, TEXT("Combat RESUMED from presentation: %s"), *GetName());
 }
@@ -605,7 +716,9 @@ void ADIBattleEncounter::CompleteEncounter()
 	ReleasePresentationPlayerLock();
 	
 	bCompleted = true;
-
+	
+	HideEncounterHUD();
+	
 	//전투종료, Block해제
 	SetBattleBlockerEnabled(false);
 
