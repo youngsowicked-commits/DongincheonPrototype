@@ -120,13 +120,15 @@ void UDIGrabComponent::ProcessGrabAttackHit()
         return;
     }
 
-    const float AppliedDamage = UGameplayStatics::ApplyDamage(TargetActor,ActiveGrabAttackDamage,OwnerActor->GetInstigatorController(),
-            OwnerActor,UDamageType::StaticClass());
+    const float AppliedDamage = UGameplayStatics::ApplyDamage(TargetActor,ActiveGrabAttackDamage,
+        OwnerActor->GetInstigatorController(),OwnerActor,UDamageType::StaticClass());
 
     if (AppliedDamage <= 0.0f)
     {
         return;
     }
+
+    OnGrabAttackHitConfirmed.Broadcast(TargetActor,AppliedDamage);
 
     if (UDIGrabComponent* TargetGrabComponent = TargetActor->FindComponentByClass<UDIGrabComponent>())
     {

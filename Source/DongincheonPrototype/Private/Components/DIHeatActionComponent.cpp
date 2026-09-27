@@ -11,11 +11,33 @@ UDIHeatActionComponent::UDIHeatActionComponent()
     PrimaryComponentTick.bCanEverTick = false;
 }
 
-AActor* UDIHeatActionComponent::FindBestHeatActionTarget(const FHeatActionConfig& Config) const
+void UDIHeatActionComponent::AddHeat(float Amount)
+{
+    if (Amount <= 0.0f || MaxHeat <= 0.0f)
+    {
+        return;
+    }
+
+    const float PreviousHeat = CurrentHeat;
+    CurrentHeat = FMath::Clamp(CurrentHeat + Amount,0.0f,MaxHeat);
+
+    if (!FMath::IsNearlyEqual(PreviousHeat,CurrentHeat))
+    {
+        OnHeatChanged.Broadcast(CurrentHeat,MaxHeat);
+    }
+}
+
+bool UDIHeatActionComponent::HasEnoughHeat(float Cost) const
+{
+    return Cost <= 0.0f || CurrentHeat >= Cost;
+}
+
+AActor* UDIHeatActionComponent::FindBestHeatActionTarget(const FGameplayTag& ActionTag,
+    const FHeatActionConfig& Config) const
 {
     AActor* OwnerActor = GetOwner();
 
-    if (!IsValid(OwnerActor) || !IsValid(GetWorld()) || Config.MaxDistance <= 0.0f)
+    if (!ActionTag.IsValid() || !IsValid(OwnerActor) || !IsValid(GetWorld()) || Config.MaxDistance <= 0.0f)
     {
         return nullptr;
     }
@@ -47,7 +69,7 @@ AActor* UDIHeatActionComponent::FindBestHeatActionTarget(const FHeatActionConfig
     {
         AActor* Candidate = Overlap.GetActor();
 
-        if (!IsValidHeatActionTarget(Candidate,Config))
+        if (!IsValidHeatActionTarget(Candidate,ActionTag,Config))
         {
             continue;
         }
@@ -64,24 +86,30 @@ AActor* UDIHeatActionComponent::FindBestHeatActionTarget(const FHeatActionConfig
     return BestTarget;
 }
 
-bool UDIHeatActionComponent::CanStartHeatAction(AActor* Target,const FHeatActionConfig& Config) const
+bool UDIHeatActionComponent::CanStartHeatAction(AActor* Target,const FGameplayTag& ActionTag,
+    const FHeatActionConfig& Config) const
 {
     if (HeatActionState != EDIHeatActionState::None)
     {
         return false;
     }
 
-    if (Config.Type == EDIHeatActionType::None || !IsValid(Config.PlayerMontage))
+    if (!ActionTag.IsValid() || !IsValid(Config.PlayerMontage) || !IsValid(Config.VictimMontage))
     {
         return false;
     }
 
-    return IsValidHeatActionTarget(Target,Config);
+    if (!HasEnoughHeat(Config.HeatCost))
+    {
+        return false;
+    }
+
+    return IsValidHeatActionTarget(Target,ActionTag,Config);
 }
 
-bool UDIHeatActionComponent::BeginHeatAction(AActor* Target,const FHeatActionConfig& Config)
+bool UDIHeatActionComponent::BeginHeatAction(AActor* Target,const FGameplayTag& ActionTag,const FHeatActionConfig& Config)
 {
-    if (!CanStartHeatAction(Target,Config))
+    if (!CanStartHeatAction(Target,ActionTag,Config))
     {
         return false;
     }
@@ -94,13 +122,20 @@ bool UDIHeatActionComponent::BeginHeatAction(AActor* Target,const FHeatActionCon
         return false;
     }
 
-    if (!TargetHeatActionComponent->AcceptHeatAction(OwnerActor,Config))
+    if (!TargetHeatActionComponent->AcceptHeatAction(OwnerActor,ActionTag,Config))
     {
+        return false;
+    }
+
+    if (!ConsumeHeat(Config.HeatCost))
+    {
+        TargetHeatActionComponent->CancelHeatAction();
         return false;
     }
 
     TargetActor = Target;
     SourceActor.Reset();
+    ActiveActionTag = ActionTag;
     ActiveConfig = Config;
     bHitProcessed = false;
 
@@ -220,9 +255,29 @@ EDIHeatActionState UDIHeatActionComponent::GetHeatActionState() const
     return HeatActionState;
 }
 
-EDIHeatActionType UDIHeatActionComponent::GetActiveType() const
+FGameplayTag UDIHeatActionComponent::GetActiveActionTag() const
 {
-    return ActiveConfig.Type;
+    return ActiveActionTag;
+}
+
+float UDIHeatActionComponent::GetCurrentHeat() const
+{
+    return CurrentHeat;
+}
+
+float UDIHeatActionComponent::GetMaxHeat() const
+{
+    return MaxHeat;
+}
+
+float UDIHeatActionComponent::GetHeatNormalized() const
+{
+    if (MaxHeat <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    return FMath::Clamp(CurrentHeat / MaxHeat,0.0f,1.0f);
 }
 
 const FHeatActionConfig& UDIHeatActionComponent::GetActiveConfig() const
@@ -230,11 +285,12 @@ const FHeatActionConfig& UDIHeatActionComponent::GetActiveConfig() const
     return ActiveConfig;
 }
 
-bool UDIHeatActionComponent::IsValidHeatActionTarget(AActor* Target,const FHeatActionConfig& Config) const
+bool UDIHeatActionComponent::IsValidHeatActionTarget(AActor* Target,const FGameplayTag& ActionTag,
+    const FHeatActionConfig& Config) const
 {
     AActor* OwnerActor = GetOwner();
 
-    if (!IsValid(OwnerActor) || !IsValid(Target) || Target == OwnerActor)
+    if (!ActionTag.IsValid() || !IsValid(OwnerActor) || !IsValid(Target) || Target == OwnerActor)
     {
         return false;
     }
@@ -245,10 +301,10 @@ bool UDIHeatActionComponent::IsValidHeatActionTarget(AActor* Target,const FHeatA
     {
         return false;
     }
-    
+
     UDIHeatActionComponent* TargetHeatActionComponent = Target->FindComponentByClass<UDIHeatActionComponent>();
 
-    if (!IsValid(TargetHeatActionComponent) || !TargetHeatActionComponent->CanAcceptHeatAction(OwnerActor,Config))
+    if (!IsValid(TargetHeatActionComponent) || !TargetHeatActionComponent->CanAcceptHeatAction(OwnerActor,ActionTag,Config))
     {
         return false;
     }
@@ -268,11 +324,15 @@ bool UDIHeatActionComponent::IsValidHeatActionTarget(AActor* Target,const FHeatA
     }
 
     const FVector Forward = OwnerActor->GetActorForwardVector().GetSafeNormal2D();
+
     return FVector::DotProduct(Forward,Direction) >= Config.MinForwardDot;
 }
 
-bool UDIHeatActionComponent::CanAcceptHeatAction(AActor* Source,const FHeatActionConfig& Config) const
+bool UDIHeatActionComponent::CanAcceptHeatAction(AActor* Source,const FGameplayTag& ActionTag,
+    const FHeatActionConfig& Config) const
 {
+    (void)Config;
+
     AActor* OwnerActor = GetOwner();
 
     if (!IsValid(OwnerActor) || !IsValid(Source) || Source == OwnerActor)
@@ -280,7 +340,7 @@ bool UDIHeatActionComponent::CanAcceptHeatAction(AActor* Source,const FHeatActio
         return false;
     }
 
-    if (Config.Type == EDIHeatActionType::None)
+    if (!ActionTag.IsValid())
     {
         return false;
     }
@@ -288,15 +348,17 @@ bool UDIHeatActionComponent::CanAcceptHeatAction(AActor* Source,const FHeatActio
     return HeatActionState == EDIHeatActionState::None;
 }
 
-bool UDIHeatActionComponent::AcceptHeatAction(AActor* Source,const FHeatActionConfig& Config)
+bool UDIHeatActionComponent::AcceptHeatAction(AActor* Source,const FGameplayTag& ActionTag,
+    const FHeatActionConfig& Config)
 {
-    if (!CanAcceptHeatAction(Source,Config))
+    if (!CanAcceptHeatAction(Source,ActionTag,Config))
     {
         return false;
     }
 
     TargetActor.Reset();
     SourceActor = Source;
+    ActiveActionTag = ActionTag;
     ActiveConfig = Config;
     bHitProcessed = false;
 
@@ -321,8 +383,27 @@ void UDIHeatActionComponent::ClearHeatActionState()
 {
     TargetActor.Reset();
     SourceActor.Reset();
+    ActiveActionTag = FGameplayTag();
     ActiveConfig = FHeatActionConfig();
     bHitProcessed = false;
 
     SetHeatActionState(EDIHeatActionState::None);
+}
+
+bool UDIHeatActionComponent::ConsumeHeat(float Amount)
+{
+    if (Amount <= 0.0f)
+    {
+        return true;
+    }
+
+    if (!HasEnoughHeat(Amount))
+    {
+        return false;
+    }
+
+    CurrentHeat = FMath::Clamp(CurrentHeat - Amount,0.0f,MaxHeat);
+    OnHeatChanged.Broadcast(CurrentHeat,MaxHeat);
+
+    return true;
 }

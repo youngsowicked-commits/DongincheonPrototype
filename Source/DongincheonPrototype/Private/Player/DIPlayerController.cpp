@@ -101,6 +101,26 @@ void ADIPlayerController::SetHUDContext(EDIHUDContext NewContext)
     HUDRootWidget->SetHUDContext(NewContext);
 }
 
+void ADIPlayerController::SetQTESource(UQTEComponent* InQTEComponent)
+{
+    if (!IsValid(HUDRootWidget))
+    {
+        return;
+    }
+
+    HUDRootWidget->SetQTESource(InQTEComponent);
+}
+
+void ADIPlayerController::ClearQTESource()
+{
+    if (!IsValid(HUDRootWidget))
+    {
+        return;
+    }
+
+    HUDRootWidget->ClearQTESource();
+}
+
 void ADIPlayerController::SetBossHUD(UHealthComponent* BossHealthComponent,bool bActive)
 {
     if (!IsValid(HUDRootWidget))

@@ -26,5 +26,8 @@ public:
 	void Interact(AActor* Interactor);
 	
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
+	bool CancelInteraction(AActor* Interactor);
+	
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
 	FText GetInteractionText() const;
 };

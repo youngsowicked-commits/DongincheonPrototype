@@ -12,6 +12,8 @@
 #include "Components/HealthComponent.h"
 #include "Components/DIGrabComponent.h"
 #include "Components/DIHeatActionComponent.h"
+#include "Gameplay/Data/DIHeatActionDefinition.h"
+#include "NativeGameplayTags.h"
 #include "Components/InteractionComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
@@ -21,6 +23,9 @@
 #include "GameFramework/PlayerController.h"
 #include "InputAction.h"
 #include "TimerManager.h"
+
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_DI_HeatAction_Context_GrabActive,"HeatAction.Context.Grab.Active");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_DI_HeatAction_Context_GrabHolding,"HeatAction.Context.Grab.Holding");
 
 // Sets default values
 ADongincheonCharacter::ADongincheonCharacter()
@@ -39,6 +44,11 @@ void ADongincheonCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	if (!IsValid(InteractionComponent))
+	{
+		InteractionComponent = FindComponentByClass<UInteractionComponent>();
+	}
+	
 	if (IsValid(HealthComponent))
 	{
 		HealthComponent->OnDamaged.AddUniqueDynamic(this, &ADongincheonCharacter::HandleHealthDamaged);
@@ -54,6 +64,7 @@ void ADongincheonCharacter::BeginPlay()
 	{
 		GrabComponent->OnGrabStateChanged.AddDynamic(this,&ADongincheonCharacter::HandleGrabStateChanged);
 		GrabComponent->OnGrabAttackReceived.AddDynamic(this,&ADongincheonCharacter::HandleGrabAttackReceived);
+		GrabComponent->OnGrabAttackHitConfirmed.AddDynamic(this,&ADongincheonCharacter::HandleGrabAttackHitConfirmed);
 	}
 }
 
@@ -191,6 +202,11 @@ void ADongincheonCharacter::HandleMoveInputCompleted(const FInputActionValue& Va
 	CachedMoveInput = FVector2D::ZeroVector;
 }
 
+bool ADongincheonCharacter::IsGameplayInputLocked() const
+{
+	return bInteractionInputLocked || bPresentationInputLocked ||
+		(IsValid(HeatActionComponent) && HeatActionComponent->IsExecuting());
+}
 
 // Runtime Query
 bool ADongincheonCharacter::IsMovementInputAllowed() const
@@ -234,6 +250,7 @@ void ADongincheonCharacter::SetPresentationInputLocked(bool blocked)
 	//진행중이던 일반 Gameplay Action 정리
 	CancelPlayerAttack(0.05f);
 	CancelPlayerDodge(0.05f);
+	CancelPlayerHeatAction(0.05f);
 	CancelPlayerGrab(0.05f);
 	
 	bGuardInputHeld = false;
@@ -341,42 +358,275 @@ void ADongincheonCharacter::HandleAttackInput()
 	}
 }
 
-AActor* ADongincheonCharacter::ResolveContextualHeatActionTarget(const FHeatActionConfig*& OutConfig) const
+AActor* ADongincheonCharacter::ResolveContextualHeatActionTarget(const UDIHeatActionDefinition*& OutDefinition) const
 {
-	OutConfig = nullptr;
+	OutDefinition = nullptr;
 
 	if (!IsValid(HeatActionComponent))
 	{
 		return nullptr;
 	}
 
-	if (IsValid(GrabComponent) && GrabComponent->IsHoldingGrab())
-	{
-		AActor* Target = GrabComponent->GetGrabbedActor();
-
-		if (!HeatActionComponent->CanStartHeatAction(Target,GrabHeatActionConfig))
-		{
-			return nullptr;
-		}
-
-		OutConfig = &GrabHeatActionConfig;
-		return Target;
-	}
+	FGameplayTagContainer ContextTags;
 
 	if (IsValid(GrabComponent) && GrabComponent->IsGrabbing())
 	{
-		return nullptr;
+		ContextTags.AddTag(TAG_DI_HeatAction_Context_GrabActive);
+
+		if (GrabComponent->IsHoldingGrab())
+		{
+			ContextTags.AddTag(TAG_DI_HeatAction_Context_GrabHolding);
+		}
 	}
 
-	AActor* Target = HeatActionComponent->FindBestHeatActionTarget(NormalHeatActionConfig);
+	AActor* BestTarget = nullptr;
+	int32 BestPriority = MIN_int32;
 
-	if (!HeatActionComponent->CanStartHeatAction(Target,NormalHeatActionConfig))
+	for (const TObjectPtr<UDIHeatActionDefinition>& DefinitionPtr : HeatActionDefinitions)
 	{
-		return nullptr;
+		UDIHeatActionDefinition* Definition = DefinitionPtr.Get();
+
+		if (!IsValid(Definition))
+		{
+			continue;
+		}
+
+		if (!Definition->ActivationQuery.IsEmpty() &&
+			!Definition->ActivationQuery.Matches(ContextTags))
+		{
+			continue;
+		}
+
+		AActor* CandidateTarget = nullptr;
+
+		switch (Definition->TargetSource)
+		{
+		case EDIHeatActionTargetSource::CurrentGrabTarget:
+			if (!IsValid(GrabComponent) || !GrabComponent->IsHoldingGrab())
+			{
+				continue;
+			}
+
+			CandidateTarget = GrabComponent->GetGrabbedActor();
+			break;
+
+		case EDIHeatActionTargetSource::NearbyTarget:
+		default:
+			CandidateTarget = HeatActionComponent->FindBestHeatActionTarget(
+				Definition->ActionTag,
+				Definition->Config);
+			break;
+		}
+
+		if (!HeatActionComponent->CanStartHeatAction(CandidateTarget,Definition->ActionTag,Definition->Config))
+		{
+			continue;
+		}
+
+		if (Definition->Priority <= BestPriority)
+		{
+			continue;
+		}
+
+		BestPriority = Definition->Priority;
+		BestTarget = CandidateTarget;
+		OutDefinition = Definition;
 	}
 
-	OutConfig = &NormalHeatActionConfig;
-	return Target;
+	return BestTarget;
+}
+
+bool ADongincheonCharacter::TryStartContextualHeatAction()
+{
+	if (!IsValid(HealthComponent) || !IsValid(CombatComponent) || !IsValid(HeatActionComponent))
+	{
+		return false;
+	}
+
+	if (HealthComponent->IsDead() || bPlayerDeathStarted || bPlayerHitReacting || bPlayerDodging ||
+		bPlayerAttackActive || CombatComponent->IsGuarding() || CombatComponent->IsGuardBroken())
+	{
+		return false;
+	}
+
+	if (IsValid(GrabComponent) && GrabComponent->IsBeingGrabbed())
+	{
+		return false;
+	}
+
+	if (HeatActionComponent->IsExecuting())
+	{
+		return false;
+	}
+
+	const UDIHeatActionDefinition* Definition = nullptr;
+	AActor* Target = ResolveContextualHeatActionTarget(Definition);
+
+	if (!IsValid(Target) || !IsValid(Definition))
+	{
+		return false;
+	}
+
+	StartPlayerHeatAction(Target,*Definition);
+
+	return HeatActionComponent->IsExecuting();
+}
+
+void ADongincheonCharacter::StartPlayerHeatAction(AActor* Target, const UDIHeatActionDefinition& Definition)
+{
+    const FHeatActionConfig& Config = Definition.Config;
+
+    if (!Definition.ActionTag.IsValid() || !IsValid(Target) || !IsValid(HeatActionComponent) ||
+        !IsValid(GetMesh()) || !IsValid(Config.PlayerMontage) || !IsValid(Config.VictimMontage))
+    {
+        return;
+    }
+
+    ACharacter* VictimCharacter = Cast<ACharacter>(Target);
+
+    if (!IsValid(VictimCharacter) || !IsValid(VictimCharacter->GetMesh()))
+    {
+        return;
+    }
+
+    UAnimInstance* PlayerAnimInstance = GetMesh()->GetAnimInstance();
+    UAnimInstance* VictimAnimInstance = VictimCharacter->GetMesh()->GetAnimInstance();
+
+    if (!IsValid(PlayerAnimInstance) || !IsValid(VictimAnimInstance))
+    {
+        return;
+    }
+
+    const bool bWasGrabHeat = IsValid(GrabComponent) && GrabComponent->IsHoldingGrab() &&
+    	GrabComponent->GetGrabbedActor() == Target;
+
+    if (!HeatActionComponent->BeginHeatAction(Target,Definition.ActionTag,Config))
+    {
+        return;
+    }
+
+    if (bWasGrabHeat)
+    {
+        CancelPlayerGrab(0.05f);
+    }
+
+    FVector TargetLocation = GetActorLocation() + GetActorForwardVector() * Config.TargetDistance;
+
+    TargetLocation.Z = Target->GetActorLocation().Z;
+
+    FRotator TargetRotation = GetActorRotation();
+    TargetRotation.Yaw += Config.VictimYawOffset;
+
+    Target->SetActorLocationAndRotation(TargetLocation,TargetRotation,false,nullptr,
+    	ETeleportType::TeleportPhysics);
+
+    if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+    {
+        Movement->StopMovementImmediately();
+    }
+
+    const float SafePlayRate = Config.PlayRate > 0.0f ? Config.PlayRate : 1.0f;
+
+    const float VictimMontageResult = VictimAnimInstance->Montage_Play(Config.VictimMontage,SafePlayRate);
+
+    if (VictimMontageResult <= 0.0f)
+    {
+        HeatActionComponent->CancelHeatAction();
+        return;
+    }
+
+    ActiveHeatActionVictimCharacter = VictimCharacter;
+    ActiveHeatActionVictimMontage = Config.VictimMontage;
+
+    const float PlayerMontageResult = PlayerAnimInstance->Montage_Play(Config.PlayerMontage,SafePlayRate);
+
+    if (PlayerMontageResult <= 0.0f)
+    {
+        StopHeatActionVictimMontage(0.05f);
+        HeatActionComponent->CancelHeatAction();
+        return;
+    }
+
+    ActiveHeatActionMontage = Config.PlayerMontage;
+
+    FOnMontageEnded MontageEndedDelegate;
+    MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleHeatActionMontageEnded);
+
+    PlayerAnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveHeatActionMontage);
+}
+
+void ADongincheonCharacter::HandleHeatActionMontageEnded(UAnimMontage* Montage,bool bInterrupted)
+{
+	if (!IsValid(Montage) || Montage != ActiveHeatActionMontage)
+	{
+		return;
+	}
+
+	ActiveHeatActionMontage = nullptr;
+	
+	StopHeatActionVictimMontage(0.05f);
+
+	if (!IsValid(HeatActionComponent))
+	{
+		return;
+	}
+
+	if (bInterrupted)
+	{
+		HeatActionComponent->CancelHeatAction();
+		return;
+	}
+
+	HeatActionComponent->CompleteHeatAction();
+}
+
+void ADongincheonCharacter::CancelPlayerHeatAction(float BlendOutTime)
+{
+	UAnimMontage* MontageToStop = ActiveHeatActionMontage;
+	ActiveHeatActionMontage = nullptr;
+	
+	StopHeatActionVictimMontage(BlendOutTime);
+
+	if (IsValid(HeatActionComponent))
+	{
+		HeatActionComponent->CancelHeatAction();
+	}
+
+	if (!IsValid(MontageToStop) || !IsValid(GetMesh()))
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		return;
+	}
+
+	FOnMontageEnded EmptyEndDelegate;
+	AnimInstance->Montage_SetEndDelegate(EmptyEndDelegate,MontageToStop);
+
+	AnimInstance->Montage_Stop(FMath::Max(0.0f,BlendOutTime),MontageToStop);
+}
+
+void ADongincheonCharacter::StopHeatActionVictimMontage(float BlendOutTime)
+{
+	ACharacter* VictimCharacter = ActiveHeatActionVictimCharacter.Get();
+	UAnimMontage* MontageToStop = ActiveHeatActionVictimMontage;
+
+	ActiveHeatActionVictimCharacter.Reset();
+	ActiveHeatActionVictimMontage = nullptr;
+
+	if (!IsValid(VictimCharacter) || !IsValid(MontageToStop) || !IsValid(VictimCharacter->GetMesh()))
+	{
+		return;
+	}
+
+	if (UAnimInstance* VictimAnimInstance = VictimCharacter->GetMesh()->GetAnimInstance())
+	{
+		VictimAnimInstance->Montage_Stop(FMath::Max(0.0f,BlendOutTime),MontageToStop);
+	}
 }
 
 void ADongincheonCharacter::HandleHeavyAttackInput()
@@ -403,6 +653,21 @@ void ADongincheonCharacter::HandleHeavyAttackInput()
 		return;
 	}
 
+	if (IsValid(GrabComponent) && GrabComponent->IsBeingGrabbed())
+	{
+		return;
+	}
+
+	if (TryStartContextualHeatAction())
+	{
+		return;
+	}
+
+	if (IsValid(GrabComponent) && GrabComponent->IsGrabbing())
+	{
+		return;
+	}
+	
 	// 아무 Light도 안 친 상태에서 RMB
 	if (!bPlayerAttackActive)
 	{
@@ -745,6 +1010,16 @@ void ADongincheonCharacter::HandleDodgeInput()
 
 void ADongincheonCharacter::HandleGrabInput()
 {
+	// Interaction 중 Q는 Grab보다 Cancel 우선.
+	if (IsValid(InteractionComponent))
+	{
+		if (InteractionComponent->CancelCurrentInteraction())
+		{
+			return;
+		}
+	}
+
+	// Cancel할 Interaction이 없을 때만 일반 Gameplay Lock 판정.
 	if (IsGameplayInputLocked())
 	{
 		return;
@@ -1295,6 +1570,19 @@ void ADongincheonCharacter::HandleGrabAttackReceived(float Damage,AActor* Damage
 	}
 
 	StartPlayerBeingGrabbedHitReact();
+}
+
+void ADongincheonCharacter::HandleGrabAttackHitConfirmed(AActor* HitActor,float AppliedDamage)
+{
+	if (!IsValid(HitActor) || AppliedDamage <= 0.0f)
+	{
+		return;
+	}
+
+	if (IsValid(HeatActionComponent))
+	{
+		HeatActionComponent->AddHeat(HeatGainPerHit);
+	}
 }
 
 void ADongincheonCharacter::StartPlayerBeingGrabbedHitReact()
@@ -1908,6 +2196,7 @@ void ADongincheonCharacter::StartPlayerHitReact()
 	
 	CancelPlayerAttack(0.05f);
 	CancelPlayerDodge(0.05f);
+	CancelPlayerHeatAction(0.05f);
 	CancelPlayerGrab(0.05f);
 	StopPlayerGuard(0.05f);
 	
@@ -2046,7 +2335,8 @@ void ADongincheonCharacter::StartPlayerDeath()
 	
 	CancelPlayerAttack(0.0f);
 	CancelPlayerDodge(0.0f);
-	CancelPlayerGrab(0.05f);
+	CancelPlayerHeatAction(0.0f);
+	CancelPlayerGrab(0.0f);
 	StopPlayerGuard(0.0f);
 	
 	bGuardInputHeld = false;
@@ -2252,6 +2542,10 @@ void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor, FVector H
 		}
 	}
 
+	if (IsValid(HeatActionComponent))
+	{
+		HeatActionComponent->AddHeat(HeatGainPerHit);
+	}
 	
 	//동일 타격에서 여러 Actor가 잡혀도 HitStop이 중복 시작되지 않게 한다.
 	if (bHitStopActive)

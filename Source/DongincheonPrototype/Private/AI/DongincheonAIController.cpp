@@ -14,8 +14,9 @@ UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Presentation_Begin,"State
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Presentation_End,"StateTreeEvent.Enemy.Presentation.End");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_GuardBroken, "StateTreeEvent.Enemy.GuardBroken");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Grabbed_Begin,"StateTreeEvent.Enemy.Grabbed.Begin");
-
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_Grabbed_End,"StateTreeEvent.Enemy.Grabbed.End");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_GrabBreak_Begin,"StateTreeEvent.Enemy.GrabBreak.Begin");
+UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_GrabBreak_End,"StateTreeEvent.Enemy.GrabBreak.End");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_HeatActionVictim_Begin,"StateTreeEvent.Enemy.HeatActionVictim.Begin");
 UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_StateTreeEvent_Enemy_HeatActionVictim_End,"StateTreeEvent.Enemy.HeatActionVictim.End");
 
@@ -201,6 +202,49 @@ void ADongincheonAIController::SendGrabReleasedEvent()
 		LogTemp,
 		Warning,
 		TEXT("01B GRAB: Grabbed END Event SENT | Pawn=%s"),
+		*GetNameSafe(GetPawn()));
+}
+
+void ADongincheonAIController::SendGrabBreakEvent()
+{
+	if (!StateTreeComponent)
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("01B GRAB BREAK: StateTreeComponent INVALID | Pawn=%s"),
+			*GetNameSafe(GetPawn()));
+		return;
+	}
+
+	StateTreeComponent->SendStateTreeEvent(
+		FStateTreeEvent(TAG_StateTreeEvent_Enemy_GrabBreak_Begin));
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("01B GRAB BREAK: BEGIN Event SENT | Pawn=%s"),
+		*GetNameSafe(GetPawn()));
+}
+
+void ADongincheonAIController::SendGrabBreakFinishedEvent()
+{
+	if (!StateTreeComponent)
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("01B GRAB BREAK: StateTreeComponent INVALID | Pawn=%s"),
+			*GetNameSafe(GetPawn()));
+		return;
+	}
+
+	StateTreeComponent->SendStateTreeEvent(FStateTreeEvent(TAG_StateTreeEvent_Enemy_GrabBreak_End));
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("01B GRAB BREAK: END Event SENT | Pawn=%s"),
 		*GetNameSafe(GetPawn()));
 }
 

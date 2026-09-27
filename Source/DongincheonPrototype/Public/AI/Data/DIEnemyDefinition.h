@@ -8,18 +8,12 @@
 #include "Gameplay/Data/DIDeathData.h"
 #include "Gameplay/Data/DIAttackData.h"
 #include "Gameplay/Data/DIGuardData.h"
+#include "Gameplay/Data/DIGrabData.h"
 #include "DIEnemyDefinition.generated.h"
 
 /**
  * 
  */
-
-UENUM(BlueprintType)
-enum class EDIEnemyGrabPolicy : uint8
-{
-	Holdable,
-	BreakFree
-};
 
 USTRUCT(BlueprintType)
 struct DONGINCHEONPROTOTYPE_API FDIAttackPattern
@@ -55,5 +49,5 @@ public:
 	FDeathConfig Death;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Gameplay|Grab")
-	EDIEnemyGrabPolicy GrabPolicy = EDIEnemyGrabPolicy::Holdable;
+	FDIEnemyGrabResponseConfig GrabResponse;
 };

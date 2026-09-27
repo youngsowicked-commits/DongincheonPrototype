@@ -11,6 +11,7 @@
 class UHealthComponent;
 class UCombatComponent;
 class UDIEnemyDefinition;
+class UAnimMontage;
 class AActor;
 
 UCLASS()
@@ -74,6 +75,13 @@ public:
 private:
 	// Grab 관계가 양쪽 Component에 완전히 설정된 다음 Grab 정책을 처리한다.
 	void ResolveGrabPolicyAfterGrabStarted();
+	
+	// 이번 Grab에서 BreakFree 확률 판정에 성공했는지 유지한다.
+	// ForceRelease 중 발생하는 Grab State 변경을 정상 Release와 구분하기 위해 사용한다.
+	bool bGrabBreakFreeActive = false;
+	
+	// BreakFree Montage가 끝나거나 중단됐을 때 호출된다.
+	void HandleGrabBreakMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 	
 	UPROPERTY(Transient)
 	int32 ActiveAttackIndex = INDEX_NONE;

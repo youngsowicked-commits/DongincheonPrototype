@@ -7,6 +7,7 @@
 
 class UDIHUDRootWidget;
 class UHealthComponent;
+class UQTEComponent;
 class UTargetingComponent;
 
 UCLASS()
@@ -20,6 +21,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void SetHUDContext(EDIHUDContext NewContext);
+	
+	UFUNCTION(BlueprintCallable, Category = "HUD|QTE")
+	void SetQTESource(UQTEComponent* InQTEComponent);
+
+	UFUNCTION(BlueprintCallable, Category = "HUD|QTE")
+	void ClearQTESource();
 
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void SetBossHUD(UHealthComponent* BossHealthComponent,bool bActive);
@@ -65,6 +72,9 @@ private:
 	
 	UPROPERTY(Transient)
 	TObjectPtr<UHealthComponent> EnemyHUDHealthSource;
+	
+	UPROPERTY(Transient)
+	EDIHUDContext CurrentHUDContext = EDIHUDContext::Gameplay;
 
 	void CreateHUD();
 };

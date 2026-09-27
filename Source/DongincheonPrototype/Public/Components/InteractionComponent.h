@@ -20,6 +20,9 @@ public:
 	bool Interact();
 	
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	bool CancelCurrentInteraction();
+	
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	FText GetCurrentInteractionText() const;
 	
 	UPROPERTY(BlueprintAssignable, Category = "Interaction")

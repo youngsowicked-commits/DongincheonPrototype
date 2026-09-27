@@ -515,6 +515,22 @@ bool ADongincheonEnemyBase::StartDeath()
 		HeatActionComponent->CancelHeatAction();
 	}
 	
+	// Death가 GrabBreak보다 최우선이다.
+	// GrabBreak 연출 중 죽었다면 탈출 Montage를 즉시 중단하고
+	// 이후 GrabBreak.End로 Combat 복귀하지 못하도록 상태를 정리한다.
+	if (bGrabBreakFreeActive)
+	{
+		bGrabBreakFreeActive = false;
+
+		if (IsValid(EnemyDefinition) && IsValid(EnemyDefinition->GrabResponse.BreakFreeMontage))
+		{
+			if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+			{
+				AnimInstance->Montage_Stop(0.05f,EnemyDefinition->GrabResponse.BreakFreeMontage);
+			}
+		}
+	}
+	
 	//Death Gameplay State는 Presentation보다 먼저 보장한다.
 	//Death Montage가 없거나 재생 실패해도 AI가 계속 움직이면 안 된다.
 	if (AAIController* AIController = Cast<AAIController>(GetController()))
@@ -747,101 +763,239 @@ void ADongincheonEnemyBase::HandleGuardBroken(float BlockedDamage, AActor* Damag
 
 void ADongincheonEnemyBase::HandleGrabStateChanged(EDIGrabState PreviousState,EDIGrabState NewState)
 {
-	ADongincheonAIController* AIController =
-		Cast<ADongincheonAIController>(GetController());
+    ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController());
 
-	// Grab Victim 진입.
-	if (NewState == EDIGrabState::BeingGrabbed)
-	{
-		if (IsValid(AIController))
-		{
-			AIController->StopMovement();
-		}
+    // Grab Victim 진입
+    if (NewState == EDIGrabState::BeingGrabbed)
+    {
+        // Boss / BreakFree 대상은 정상 Grab AI 상태에 들어가지 않는다.
+    	// 새 Grab이 시작될 때 이전 BreakFree 판정값을 초기화한다.
+    	bGrabBreakFreeActive = false;
 
-		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-		{
-			Movement->StopMovementImmediately();
-		}
+    	if (IsValid(EnemyDefinition))
+    	{
+    		const float BreakFreeChance =
+				FMath::Clamp(EnemyDefinition->GrabResponse.BreakFreeChance, 0.0f, 1.0f);
 
-		if (IsAttackActive())
-		{
-			CancelAttack(0.05f);
-		}
+    		// Grab이 성립할 때 딱 한 번만 BreakFree 확률을 판정한다.
+    		if (BreakFreeChance > 0.0f &&
+				FMath::FRand() <= BreakFreeChance)
+    		{
+    			bGrabBreakFreeActive = true;
 
-		if (IsGuardActive())
-		{
-			StopGuard();
-		}
+    			// BeginGrab()의 양방향 관계 설정이 끝난 다음 Tick에 안전하게 해제한다.
+    			GetWorldTimerManager().SetTimerForNextTick(
+					this,
+					&ADongincheonEnemyBase::ResolveGrabPolicyAfterGrabStarted);
 
-		// BreakFree 정책은 BeginGrab()의 양방향 관계 설정이 끝난 다음 Tick에 처리한다.
-		if (IsValid(EnemyDefinition) &&
-			EnemyDefinition->GrabPolicy == EDIEnemyGrabPolicy::BreakFree)
-		{
-			GetWorldTimerManager().SetTimerForNextTick(
-				this,
-				&ADongincheonEnemyBase::ResolveGrabPolicyAfterGrabStarted);
-		}
+    			return;
+    		}
+    	}
 
-		// Heat Action Victim이 더 높은 우선순위를 가진다.
-		// 이미 Heat Action 중이라면 BeingGrabbed로 StateTree를 덮어쓰지 않는다.
-		if (IsValid(HeatActionComponent) &&
-			HeatActionComponent->IsBeingVictim())
-		{
-			return;
-		}
+        // 여기부터는 실제로 잡힌 상태를 유지하는 일반 Enemy만 처리한다.
+        if (IsValid(AIController))
+        {
+            AIController->StopMovement();
+        }
 
-		if (IsValid(AIController))
-		{
-			AIController->SendGrabbedEvent();
-		}
+        if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+        {
+            Movement->StopMovementImmediately();
+        }
 
-		return;
-	}
+        if (IsAttackActive())
+        {
+            CancelAttack(0.05f);
+        }
 
-	// Grab Victim 이탈.
-	if (PreviousState == EDIGrabState::BeingGrabbed)
-	{
-		// 죽은 Enemy는 Combat으로 복귀하지 않는다.
-		if (IsValid(HealthComponent) && HealthComponent->IsDead())
-		{
-			return;
-		}
+        if (IsGuardActive())
+        {
+            StopGuard();
+        }
 
-		// Heat Action Victim 상태가 남아있으면 Combat으로 복귀하지 않는다.
-		if (IsValid(HeatActionComponent) &&
-			HeatActionComponent->IsBeingVictim())
-		{
-			return;
-		}
+        // Heat Action Victim이 더 높은 우선순위를 가진다.
+        if (IsValid(HeatActionComponent) && HeatActionComponent->IsBeingVictim())
+        {
+            return;
+        }
 
-		if (IsValid(AIController))
-		{
-			AIController->SendGrabReleasedEvent();
-		}
-	}
+        if (IsValid(AIController))
+        {
+            AIController->SendGrabbedEvent();
+        }
+
+        return;
+    }
+
+    // Grab Victim 이탈
+    if (PreviousState == EDIGrabState::BeingGrabbed)
+    {
+    	// BreakFree로 발생한 Release는 일반 Grab 종료로 처리하지 않는다.
+    	// ResolveGrabPolicyAfterGrabStarted()가 ForceRelease 완료 후 값을 정리한다.
+    	if (bGrabBreakFreeActive)
+    	{
+    		return;
+    	}
+
+        // 죽은 Enemy는 Combat으로 복귀하지 않는다.
+        if (IsValid(HealthComponent) && HealthComponent->IsDead())
+        {
+            return;
+        }
+
+        // Heat Action Victim 상태가 남아있으면 Combat으로 복귀하지 않는다.
+        if (IsValid(HeatActionComponent) && HeatActionComponent->IsBeingVictim())
+        {
+            return;
+        }
+
+        if (IsValid(AIController))
+        {
+            AIController->SendGrabReleasedEvent();
+        }
+    }
 }
 
 void ADongincheonEnemyBase::ResolveGrabPolicyAfterGrabStarted()
 {
-	if (!IsValid(GrabComponent) ||
-		!GrabComponent->IsBeingGrabbed())
+    // 다음 Tick 전에 Grab이 이미 끝났다면 BreakFree 처리도 종료한다.
+    if (!IsValid(GrabComponent) || !GrabComponent->IsBeingGrabbed())
+    {
+        bGrabBreakFreeActive = false;
+        return;
+    }
+
+    if (!bGrabBreakFreeActive)
+    {
+        return;
+    }
+
+    ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController());
+
+    UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+
+    UAnimMontage* BreakFreeMontage = IsValid(EnemyDefinition) ? EnemyDefinition->GrabResponse.BreakFreeMontage.Get()
+            : nullptr;
+
+    // 실제 Grab 관계는 우선 즉시 해제한다.
+    // bGrabBreakFreeActive는 ForceRelease() 도중 발생하는
+    // BeingGrabbed -> None Delegate를 구분하기 위해 아직 true로 유지한다.
+    GrabComponent->ForceRelease();
+
+    // BreakFree Montage가 설정되지 않았다면
+    // AI Presentation 상태에는 들어가지 않고 Grab 해제만 완료한다.
+    if (!IsValid(AnimInstance) || !IsValid(BreakFreeMontage))
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("01B GRAB BREAK: Montage INVALID | Enemy=%s | Montage=%s"),
+            *GetNameSafe(this),
+            *GetNameSafe(BreakFreeMontage));
+
+        bGrabBreakFreeActive = false;
+        return;
+    }
+
+    // 여기부터 실제 BreakFree Presentation 시작.
+    if (IsValid(AIController))
+    {
+        AIController->StopMovement();
+    }
+
+    if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+    {
+        Movement->StopMovementImmediately();
+    }
+
+    if (IsAttackActive())
+    {
+        CancelAttack(0.05f);
+    }
+
+    if (IsGuardActive())
+    {
+        StopGuard();
+    }
+
+    // 탈출 모션 중 다시 Grab되는 것을 방지한다.
+    GrabComponent->SetCanBeGrabbed(false);
+
+    const float MontageDuration = AnimInstance->Montage_Play(BreakFreeMontage);
+
+    if (MontageDuration <= 0.0f)
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("01B GRAB BREAK: Montage_Play FAILED | Enemy=%s"),
+            *GetNameSafe(this));
+
+        GrabComponent->SetCanBeGrabbed(true);
+        bGrabBreakFreeActive = false;
+        return;
+    }
+
+    // 실제 Montage가 재생된 경우에만 StateTree GrabBreak 상태로 진입한다.
+    if (IsValid(AIController))
+    {
+        AIController->SendGrabBreakEvent();
+    }
+
+    FOnMontageEnded MontageEndedDelegate;MontageEndedDelegate.BindUObject(this,
+    	&ADongincheonEnemyBase::HandleGrabBreakMontageEnded);
+
+    AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,BreakFreeMontage);
+
+    UE_LOG(
+        LogTemp,
+        Warning,
+        TEXT("01B GRAB BREAK: Montage START | Enemy=%s | Montage=%s"),
+        *GetNameSafe(this),
+        *GetNameSafe(BreakFreeMontage));
+}
+
+void ADongincheonEnemyBase::HandleGrabBreakMontageEnded(UAnimMontage* Montage,bool bInterrupted)
+{
+	if (!bGrabBreakFreeActive)
 	{
 		return;
 	}
 
-	if (!IsValid(EnemyDefinition) ||
-		EnemyDefinition->GrabPolicy != EDIEnemyGrabPolicy::BreakFree)
+	bGrabBreakFreeActive = false;
+
+	const bool bIsDead  =IsValid(HealthComponent) && HealthComponent->IsDead();
+
+	// 죽은 Enemy는 다시 Grab 가능 상태로 돌리지 않는다.
+	if (IsValid(GrabComponent) && !bIsDead)
+	{
+		GrabComponent->SetCanBeGrabbed(true);
+	}
+
+	if (bIsDead)
 	{
 		return;
 	}
 
-	GrabComponent->ForceRelease();
+	// Heat Action이 더 높은 우선순위를 차지하고 있다면
+	// GrabBreak.End로 Combat 상태를 덮어쓰지 않는다.
+	if (IsValid(HeatActionComponent) &&
+		HeatActionComponent->IsBeingVictim())
+	{
+		return;
+	}
+
+	if (ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController()))
+	{
+		AIController->SendGrabBreakFinishedEvent();
+	}
 
 	UE_LOG(
 		LogTemp,
 		Warning,
-		TEXT("01B GRAB: BreakFree | Enemy=%s"),
-		*GetNameSafe(this));
+		TEXT("01B GRAB BREAK: Montage END | Enemy=%s | Interrupted=%s"),
+		*GetNameSafe(this),
+		bInterrupted ? TEXT("TRUE") : TEXT("FALSE"));
 }
 
 void ADongincheonEnemyBase::HandleHeatActionStateChanged(EDIHeatActionState PreviousState,EDIHeatActionState NewState)
@@ -869,6 +1023,16 @@ void ADongincheonEnemyBase::HandleHeatActionStateChanged(EDIHeatActionState Prev
 		if (IsGuardActive())
 		{
 			StopGuard();
+		}
+		
+		// Heat Action은 GrabBreak보다 우선순위가 높다.
+		// GrabBreak Montage가 실행 중이라면 중단하고 Heat Action Victim으로 넘긴다.
+		if (bGrabBreakFreeActive && IsValid(EnemyDefinition) && IsValid(EnemyDefinition->GrabResponse.BreakFreeMontage))
+		{
+			if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+			{
+				AnimInstance->Montage_Stop(0.05f,EnemyDefinition->GrabResponse.BreakFreeMontage);
+			}
 		}
 
 		if (IsValid(AIController))

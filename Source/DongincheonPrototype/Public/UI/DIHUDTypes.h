@@ -8,5 +8,6 @@ enum class EDIHUDContext : uint8
 {
 	Gameplay    UMETA(DisplayName = "Gameplay"),
 	Cinematic   UMETA(DisplayName = "Cinematic"),
+	QTE         UMETA(DisplayName = "QTE"),
 	Interaction UMETA(DisplayName = "Interaction")
 };

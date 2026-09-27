@@ -60,6 +60,12 @@ void ADIBattleEncounter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		QTEComponent->CancelQTE();
 	}
 
+	if (ADIPlayerController* PlayerController = Cast<ADIPlayerController>
+	(UGameplayStatics::GetPlayerController(this, 0)))
+	{
+		PlayerController->ClearQTESource();
+	}
+	
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -121,23 +127,9 @@ void ADIBattleEncounter::HandlePlayerQTEInputPressed(EQTEInputType InputType)
 	QTEComponent->SubmitInput(InputType);
 }
 
-void ADIBattleEncounter::HandleQTECompleted(FName QTEId, EQTEResult Result)
+void ADIBattleEncounter::HandleQTECompleted(FName QTEId,EQTEResult Result)
 {
-	if (bMidFightPresentationActive && QTEId == MidFightQTEConfig.QTEId)
-	{
-		bMidFightQTESucceeded = Result == EQTEResult::Success;
-
-		UE_LOG(
-			LogDIBattleEncounter,
-			Log,
-			TEXT("MidFight QTE COMPLETE | Id=%s | Result=%s"),
-			*QTEId.ToString(),
-			bMidFightQTESucceeded
-			? TEXT("SUCCESS")
-			: TEXT("FAILED"));
-	}
-
-	OnEncounterQTECompleted(QTEId, Result);
+	OnEncounterQTECompleted(QTEId,Result);
 }
 
 void ADIBattleEncounter::HandleTriggerBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
@@ -181,10 +173,15 @@ void ADIBattleEncounter::StartEncounter()
 	SpawnedEnemies.Reset();
 	TriggeredHealthTriggerIndices.Reset();
 
-	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0)))
+	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>
+		(UGameplayStatics::GetPlayerCharacter(this, 0)))
 	{
 		Player->OnQTEInputPressed.AddUniqueDynamic(this, &ADIBattleEncounter::HandlePlayerQTEInputPressed);
+		
+		Player->SetPresentationInputLocked(true);
 	}
+	
+	
 
 
 	//한번 발동했으면 다시 Trigger되지 않게 함,
@@ -331,6 +328,12 @@ void ADIBattleEncounter::StartCombat()
 
 	bCombatStarted = true;
 	bCombatPausedForPresentation = false;
+	
+	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>
+		(UGameplayStatics::GetPlayerCharacter(this, 0)))
+	{
+		Player->SetPresentationInputLocked(false);
+	}
 
 	UE_LOG(LogDIBattleEncounter, Log, TEXT("Combat START: %s"), *GetName());
 	
@@ -373,7 +376,8 @@ void ADIBattleEncounter::PauseCombatForPresentation()
 
 	bCombatPausedForPresentation = true;
 
-	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0)))
+	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>
+		(UGameplayStatics::GetPlayerCharacter(this, 0)))
 	{
 		PresentationLockedPlayer = Player;
 
@@ -450,8 +454,10 @@ void ADIBattleEncounter::ResumeCombatFromPresentation()
 
 	ReleasePresentationPlayerLock();
 	
-	if (ADIPlayerController* PlayerController = Cast<ADIPlayerController>(UGameplayStatics::GetPlayerController(this, 0)))
+	if (ADIPlayerController* PlayerController = Cast<ADIPlayerController>
+	(UGameplayStatics::GetPlayerController(this, 0)))
 	{
+		PlayerController->ClearQTESource();
 		PlayerController->SetHUDContext(EDIHUDContext::Gameplay);
 	}
 
@@ -476,6 +482,12 @@ void ADIBattleEncounter::StartMidFightPresentation()
 		return;
 	}
 
+	if (ADIPlayerController* PlayerController = Cast<ADIPlayerController>
+		(UGameplayStatics::GetPlayerController(this, 0)))
+	{
+		PlayerController->SetHUDContext(EDIHUDContext::QTE);
+	}
+	
 	UE_LOG(
 		LogDIBattleEncounter,
 		Log,
@@ -571,7 +583,22 @@ bool ADIBattleEncounter::StartEncounterQTE(const FQTEConfig& Config)
 		return false;
 	}
 
-	return QTEComponent->StartQTE(Config);
+	const bool bQTEStarted =
+		QTEComponent->StartQTE(Config);
+
+	if (!bQTEStarted)
+	{
+		return false;
+	}
+
+	if (ADIPlayerController* PlayerController = Cast<ADIPlayerController>
+	(UGameplayStatics::GetPlayerController(this, 0)))
+	{
+		PlayerController->SetQTESource(QTEComponent);
+		PlayerController->SetHUDContext(EDIHUDContext::QTE);
+	}
+
+	return true;
 }
 
 void ADIBattleEncounter::FailEncounterQTE()
@@ -716,6 +743,12 @@ void ADIBattleEncounter::CompleteEncounter()
 	ReleasePresentationPlayerLock();
 	
 	bCompleted = true;
+	
+	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>
+		(UGameplayStatics::GetPlayerCharacter(this, 0)))
+	{
+		Player->SetPresentationInputLocked(false);
+	}
 	
 	HideEncounterHUD();
 	

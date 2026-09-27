@@ -6,6 +6,7 @@
 #include "Interface/Interactable.h"
 #include "Gameplay/Collision/DICollisionChannels.h"
 #include "Components/PrimitiveComponent.h"
+#include "Character/DongincheonCharacter.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
 #include "CollisionQueryParams.h"
@@ -23,7 +24,39 @@ UInteractionComponent::UInteractionComponent()
 
 bool UInteractionComponent::Interact()
 {
+	ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(GetOwner());
+
+	if (IsValid(Player) && Player->IsGameplayInputLocked())
+	{
+		return false;
+	}
+	
 	return TryInteract(CurrentInteractable);
+}
+
+bool UInteractionComponent::CancelCurrentInteraction()
+{
+	if (!IsValid(CurrentInteractable))
+	{
+		return false;
+	}
+
+	if (!CurrentInteractable->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
+	{
+		return false;
+	}
+
+	AActor* OwnerActor = GetOwner();
+
+	if (!IsValid(OwnerActor))
+	{
+		return false;
+	}
+
+	return IInteractable::Execute_CancelInteraction(
+		CurrentInteractable,
+		OwnerActor
+	);
 }
 
 FText UInteractionComponent::GetCurrentInteractionText() const

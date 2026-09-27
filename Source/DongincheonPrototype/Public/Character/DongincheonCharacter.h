@@ -7,7 +7,6 @@
 #include "Gameplay/Data/DIAttackData.h"
 #include "Gameplay/Data/DIGuardData.h"
 #include "Gameplay/Data/DIGrabData.h"
-#include "Gameplay/Data/DIHeatActionData.h"
 #include "Player/DIPlayerController.h"
 #include "Components/QTEComponent.h"
 #include "DongincheonCharacter.generated.h"
@@ -20,6 +19,7 @@ class UInteractionComponent;
 class UInputAction;
 class UDIGrabComponent;
 class UDIHeatActionComponent;
+class UDIHeatActionDefinition;
 class UAnimMontage;
 class UCameraShakeBase;
 
@@ -91,10 +91,7 @@ public:
 	void SetInteractionInputLocked(bool bLocked);
 	
 	UFUNCTION(BlueprintPure, Category = "Player|Input")
-	bool IsGameplayInputLocked() const
-	{
-		return bInteractionInputLocked || bPresentationInputLocked;
-	}
+	bool IsGameplayInputLocked() const;
 	
 	void FinalizePlayerDeath();
 	
@@ -143,6 +140,9 @@ protected:
 	
 	UFUNCTION()
 	void HandleGrabAttackReceived(float Damage, AActor* DamageCauser);
+	
+	UFUNCTION()
+	void HandleGrabAttackHitConfirmed(AActor* HitActor,float AppliedDamage);
 
 	void StartPlayerBeingGrabbedHitReact();
 	void HandleBeingGrabbedHitReactMontageEnded(UAnimMontage* Montage, bool bInterrupted);
@@ -313,14 +313,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Grab")
 	FGrabConfig GrabConfig;
 	
-	//Hit Action Content
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|HeatAction")
-	FHeatActionConfig NormalHeatActionConfig;
+	//Heat Action Content
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category = "Player|Combat|HeatAction")
+	TArray<TObjectPtr<UDIHeatActionDefinition>> HeatActionDefinitions;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|HeatAction")
-	FHeatActionConfig GrabHeatActionConfig;
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category = "Player|Combat|HeatAction",meta = (ClampMin = "0.0"))
+	float HeatGainPerHit = 10.0f;
+
+	AActor* ResolveContextualHeatActionTarget(const UDIHeatActionDefinition*& OutDefinition) const;
 	
-	AActor* ResolveContextualHeatActionTarget(const FHeatActionConfig*& OutConfig) const;
+	bool TryStartContextualHeatAction();
+	void StartPlayerHeatAction(AActor* Target,const UDIHeatActionDefinition& Definition);
+	void HandleHeatActionMontageEnded(UAnimMontage* Montage,bool bInterrupted);
+	void CancelPlayerHeatAction(float BlendOutTime = 0.0f);
+	void StopHeatActionVictimMontage(float BlendOutTime);
 	
 	//Attack Content
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack")
@@ -440,6 +446,15 @@ protected:
 	
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> ActiveGrabReleaseMontage = nullptr;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveHeatActionMontage = nullptr;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveHeatActionVictimMontage = nullptr;
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<ACharacter> ActiveHeatActionVictimCharacter;
 	
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> ActiveBeingGrabbedStartMontage = nullptr;

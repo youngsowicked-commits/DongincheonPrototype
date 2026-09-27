@@ -6,6 +6,22 @@
 class UAnimMontage;
 
 USTRUCT(BlueprintType)
+struct FDIEnemyGrabResponseConfig
+{
+	GENERATED_BODY()
+
+	// Grab이 성립했을 때 이 Enemy가 탈출을 시도할 확률.
+	// 0.0 = 절대 탈출하지 않음
+	// 1.0 = 항상 탈출
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category = "Grab|Victim",meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BreakFreeChance = 0.0f;
+
+	// BreakFree에 성공했을 때 재생할 Victim 탈출 모션.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grab|Victim")
+	TObjectPtr<UAnimMontage> BreakFreeMontage = nullptr;
+};
+
+USTRUCT(BlueprintType)
 struct FGrabConfig
 {
 	GENERATED_BODY()

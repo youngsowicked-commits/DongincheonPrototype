@@ -23,6 +23,7 @@ enum class EDIGrabState : uint8
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDIGrabStateChangedSignature,EDIGrabState, PreviousState,EDIGrabState, NewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDIGrabAttackReceivedSignature,float, Damage,AActor*, DamageCauser);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDIGrabAttackHitConfirmedSignature,AActor*,HitActor,float,AppliedDamage);
 
 UCLASS(ClassGroup=(DI), meta=(BlueprintSpawnableComponent))
 class DONGINCHEONPROTOTYPE_API UDIGrabComponent : public UActorComponent
@@ -85,6 +86,9 @@ public:
     
     UPROPERTY(BlueprintAssignable, Category = "Grab")
     FDIGrabAttackReceivedSignature OnGrabAttackReceived;
+    
+    UPROPERTY(BlueprintAssignable,Category = "Grab")
+    FDIGrabAttackHitConfirmedSignature OnGrabAttackHitConfirmed;
 
 private:
     bool CanAcceptGrab(AActor* Grabber) const;

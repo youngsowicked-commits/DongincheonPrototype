@@ -10,7 +10,7 @@ public class DongincheonPrototype : ModuleRules
 	
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
-			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "StateTreeModule", "UMG" 
+			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "StateTreeModule", "UMG", "SlateCore" 
 			
 		});
 

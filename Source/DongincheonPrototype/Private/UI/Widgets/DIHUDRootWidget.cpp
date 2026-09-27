@@ -1,6 +1,7 @@
 ﻿#include "UI/Widgets/DIHUDRootWidget.h"
 
 #include "UI/Widgets/DIHealthBarWidgetBase.h"
+#include "UI/Widgets/DIQTEPromptWidgetBase.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/Widget.h"
 #include "Components/CanvasPanelSlot.h"
@@ -111,6 +112,26 @@ bool UDIHUDRootWidget::IsBossHUDActive() const
 	return bBossHUDActive;
 }
 
+void UDIHUDRootWidget::SetQTESource(UQTEComponent* InQTEComponent)
+{
+	if (!IsValid(QTEPrompt))
+	{
+		return;
+	}
+
+	QTEPrompt->SetQTESource(InQTEComponent);
+}
+
+void UDIHUDRootWidget::ClearQTESource()
+{
+	if (!IsValid(QTEPrompt))
+	{
+		return;
+	}
+
+	QTEPrompt->ClearQTESource();
+}
+
 void UDIHUDRootWidget::SetHUDContext(EDIHUDContext NewContext)
 {
 	if (CurrentHUDContext == NewContext)
@@ -191,10 +212,16 @@ void UDIHUDRootWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime
 
 void UDIHUDRootWidget::RefreshHUDVisibility()
 {
-	const bool bShowCombatHUD = CurrentHUDContext == EDIHUDContext::Gameplay;
+	const bool bShowCombatHUD = CurrentHUDContext == EDIHUDContext::Gameplay 
+	|| CurrentHUDContext == EDIHUDContext::QTE;
+
 	const bool bShowEnemyHUD = bShowCombatHUD && bEnemyHUDActive;
+
 	const bool bShowBossHUD = bShowCombatHUD && bBossHUDActive;
-	const bool bShowLockOn = bShowCombatHUD && IsValid(LockOnTarget);
+
+	const bool bShowLockOn = CurrentHUDContext == EDIHUDContext::Gameplay && IsValid(LockOnTarget);
+	
+	const bool bShowQTEPrompt = CurrentHUDContext == EDIHUDContext::QTE;
 
 	if (IsValid(CombatHUDContainer))
 	{
@@ -214,5 +241,10 @@ void UDIHUDRootWidget::RefreshHUDVisibility()
 	if (IsValid(LockOnMarker))
 	{
 		LockOnMarker->SetVisibility(bShowLockOn ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
+	
+	if (IsValid(QTEPrompt))
+	{
+		QTEPrompt->SetVisibility(bShowQTEPrompt ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 }

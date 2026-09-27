@@ -107,15 +107,17 @@ void UQTEComponent::SubmitInput(EQTEInputType InputType)
 
     ++CurrentInputIndex;
 
-    OnQTEProgress.Broadcast(ActiveConfig.QTEId,CurrentInputIndex,ActiveConfig.Steps.Num());
-
     if (CurrentInputIndex >= ActiveConfig.Steps.Num())
     {
+        OnQTEProgress.Broadcast(ActiveConfig.QTEId,CurrentInputIndex,ActiveConfig.Steps.Num());
+
         CompleteQTE(EQTEResult::Success);
         return;
     }
 
     StartCurrentStepTimer();
+
+    OnQTEProgress.Broadcast(ActiveConfig.QTEId,CurrentInputIndex,ActiveConfig.Steps.Num());
 }
 
 void UQTEComponent::FailQTE()

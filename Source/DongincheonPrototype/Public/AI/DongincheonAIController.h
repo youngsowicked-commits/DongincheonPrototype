@@ -27,6 +27,12 @@ public:
 	void SendGrabbedEvent();
 	void SendGrabReleasedEvent();
 	
+	// Enemy가 Grab을 강제로 풀고 BreakFree 연출 상태로 진입한다.
+	void SendGrabBreakEvent();
+
+	// BreakFree 연출이 끝나 정상 Combat으로 복귀한다.
+	void SendGrabBreakFinishedEvent();
+	
 	void SendHeatActionVictimEvent();
 	void SendHeatActionVictimReleasedEvent();
 	

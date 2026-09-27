@@ -6,7 +6,9 @@
 #include "DIHUDRootWidget.generated.h"
 
 class UDIHealthBarWidgetBase;
+class UDIQTEPromptWidgetBase;
 class UHealthComponent;
+class UQTEComponent;
 class UWidget;
 
 UCLASS(Abstract, Blueprintable)
@@ -44,6 +46,13 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "HUD")
     bool IsBossHUDActive() const;
+    
+    // QTE ---------------------------------------------------
+    UFUNCTION(BlueprintCallable, Category = "HUD|QTE")
+    void SetQTESource(UQTEComponent* InQTEComponent);
+
+    UFUNCTION(BlueprintCallable, Category = "HUD|QTE")
+    void ClearQTESource();
     
     // Global HUD Context ------------------------------------
     UFUNCTION(BlueprintCallable, Category = "HUD")
@@ -90,6 +99,10 @@ private:
     // Boss HP
     UPROPERTY(meta = (BindWidget))
     TObjectPtr<UDIHealthBarWidgetBase> BossHealthBar;
+    
+    // QTE Prompt
+    UPROPERTY(meta = (BindWidget))
+    TObjectPtr<UDIQTEPromptWidgetBase> QTEPrompt;
     
     UPROPERTY(Transient)
     EDIHUDContext CurrentHUDContext = EDIHUDContext::Gameplay;
