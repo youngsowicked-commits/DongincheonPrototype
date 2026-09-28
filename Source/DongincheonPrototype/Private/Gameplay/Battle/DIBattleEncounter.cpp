@@ -6,6 +6,7 @@
 #include "UI/DIHUDTypes.h"
 #include "Components/QTEComponent.h"
 #include "Components/HealthComponent.h"
+#include "Components/InteractionComponent.h"
 #include "AI/DongincheonAIController.h"
 #include "Components/BoxComponent.h"
 #include "Engine/TargetPoint.h"
@@ -129,7 +130,38 @@ void ADIBattleEncounter::HandlePlayerQTEInputPressed(EQTEInputType InputType)
 
 void ADIBattleEncounter::HandleQTECompleted(FName QTEId,EQTEResult Result)
 {
-	OnEncounterQTECompleted(QTEId,Result);
+	// 현재 완료된 QTE가 Mid-Fight용으로 등록된 Step인지 확인한다.
+	const bool bIsMidFightStep = MidFightQTEConfigs.ContainsByPredicate([QTEId](const FQTEConfig& Config)
+			{return Config.QTEId == QTEId;});
+
+	if (bMidFightPresentationActive && bIsMidFightStep)
+	{
+		// 같은 Step의 완료 이벤트가 두 번 들어오는 것을 막는다.
+		if (ResolvedMidFightQTEStepIds.Contains(QTEId))
+		{
+			UE_LOG(
+				LogDIBattleEncounter,
+				Warning,
+				TEXT("MidFight QTE RESULT IGNORED | Step already resolved | StepId=%s"),
+				*QTEId.ToString());
+
+			return;
+		}
+
+		// 이 Step은 이제 완료된 것으로 기록한다.
+		ResolvedMidFightQTEStepIds.Add(QTEId);
+
+		UE_LOG(
+			LogDIBattleEncounter,
+			Log,
+			TEXT("MidFight QTE STEP RESOLVED | StepId=%s | Result=%d"),
+			*QTEId.ToString(),
+			static_cast<int32>(Result));
+	}
+
+	// 실제 Success / Fail 결과는 그대로 Blueprint Presentation에 전달한다.
+	// 05는 QTEId로 Step을 식별하고 Result에 따라 연출만 분기한다.
+	OnEncounterQTECompleted(QTEId, Result);
 }
 
 void ADIBattleEncounter::HandleTriggerBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
@@ -173,17 +205,14 @@ void ADIBattleEncounter::StartEncounter()
 	SpawnedEnemies.Reset();
 	TriggeredHealthTriggerIndices.Reset();
 
-	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>
-		(UGameplayStatics::GetPlayerCharacter(this, 0)))
+	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0)))
 	{
-		Player->OnQTEInputPressed.AddUniqueDynamic(this, &ADIBattleEncounter::HandlePlayerQTEInputPressed);
-		
+		Player->OnQTEInputPressed.AddUniqueDynamic(this,&ADIBattleEncounter::HandlePlayerQTEInputPressed
+		);
+
 		Player->SetPresentationInputLocked(true);
 	}
 	
-	
-
-
 	//한번 발동했으면 다시 Trigger되지 않게 함,
 	BattleTrigger->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
@@ -330,9 +359,15 @@ void ADIBattleEncounter::StartCombat()
 	bCombatPausedForPresentation = false;
 	
 	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>
-		(UGameplayStatics::GetPlayerCharacter(this, 0)))
+	   (UGameplayStatics::GetPlayerCharacter(this, 0)))
 	{
+		Player->SetCombatInputEnabled(true);
 		Player->SetPresentationInputLocked(false);
+		
+		if (UInteractionComponent* Interaction = Player->FindComponentByClass<UInteractionComponent>())
+		{
+			Interaction->SetInteractionEnabled(false);
+		}
 	}
 
 	UE_LOG(LogDIBattleEncounter, Log, TEXT("Combat START: %s"), *GetName());
@@ -472,7 +507,10 @@ void ADIBattleEncounter::StartMidFightPresentation()
 	}
 
 	bMidFightPresentationActive = true;
-	bMidFightQTESucceeded = false;
+	
+	// 새 Mid-Fight Presentation이 시작될 때
+	// 이전 실행에서 완료된 QTE Step 기록을 모두 비운다.
+	ResolvedMidFightQTEStepIds.Reset();
 
 	PauseCombatForPresentation();
 
@@ -497,50 +535,94 @@ void ADIBattleEncounter::StartMidFightPresentation()
 	OnMidFightPresentationStarted();
 }
 
-bool ADIBattleEncounter::StartMidFightQTE()
+bool ADIBattleEncounter::StartMidFightQTE(FName StepId)
 {
-	UE_LOG(
-		LogDIBattleEncounter,
-		Warning,
-		TEXT("StartMidFightQTE CALLED | PresentationActive=%s | QTEId=%s"),
-		bMidFightPresentationActive ? TEXT("TRUE") : TEXT("FALSE"),
-		*MidFightQTEConfig.QTEId.ToString());
+    UE_LOG(
+        LogDIBattleEncounter,
+        Warning,
+        TEXT("StartMidFightQTE CALLED | PresentationActive=%s | StepId=%s"),
+        bMidFightPresentationActive ? TEXT("TRUE") : TEXT("FALSE"),
+        *StepId.ToString());
 
-	if (!bMidFightPresentationActive)
-	{
-		return false;
-	}
+    // Mid-Fight Presentation 중에만 Step QTE를 시작할 수 있다.
+    if (!bMidFightPresentationActive)
+    {
+        return false;
+    }
 
-	if (MidFightQTEConfig.QTEId.IsNone())
-	{
-		UE_LOG(
-			LogDIBattleEncounter,
-			Error,
-			TEXT("StartMidFightQTE FAILED | QTEId is None"));
+    // None은 유효한 Step 식별자가 아니다.
+    if (StepId.IsNone())
+    {
+        UE_LOG(
+            LogDIBattleEncounter,
+            Error,
+            TEXT("StartMidFightQTE FAILED | StepId is None"));
 
-		return false;
-	}
+        return false;
+    }
 
-	if (MidFightQTEConfig.Steps.IsEmpty())
-	{
-		UE_LOG(
-			LogDIBattleEncounter,
-			Error,
-			TEXT("StartMidFightQTE FAILED | QTE Config has no Steps | Id=%s"),
-			*MidFightQTEConfig.QTEId.ToString());
+    // 이미 완료된 Step을 다시 실행하지 않는다.
+    if (ResolvedMidFightQTEStepIds.Contains(StepId))
+    {
+        UE_LOG(
+            LogDIBattleEncounter,
+            Warning,
+            TEXT("StartMidFightQTE BLOCKED | Step already resolved | StepId=%s"),
+            *StepId.ToString());
 
-		return false;
-	}
+        return false;
+    }
 
-	const bool bStartedQTE = StartEncounterQTE(MidFightQTEConfig);
+    // 현재 실행 중인 QTE가 있다면 새 Step을 겹쳐서 시작하지 않는다.
+    if (IsValid(QTEComponent) && QTEComponent->IsQTEActive())
+    {
+        UE_LOG(
+            LogDIBattleEncounter,
+            Warning,
+            TEXT("StartMidFightQTE BLOCKED | Another QTE is already active | StepId=%s"),
+            *StepId.ToString());
 
-	UE_LOG(
-		LogDIBattleEncounter,
-		Warning,
-		TEXT("StartMidFightQTE RESULT | Started=%s"),
-		bStartedQTE ? TEXT("TRUE") : TEXT("FALSE"));
+        return false;
+    }
 
-	return bStartedQTE;
+    // QTEId가 StepId와 일치하는 Config를 찾는다.
+    const FQTEConfig* FoundConfig = MidFightQTEConfigs.FindByPredicate([StepId](const FQTEConfig& Config)
+        {
+            return Config.QTEId == StepId;
+        });
+
+    if (!FoundConfig)
+    {
+        UE_LOG(
+            LogDIBattleEncounter,
+            Error,
+            TEXT("StartMidFightQTE FAILED | Config not found | StepId=%s"),
+            *StepId.ToString());
+
+        return false;
+    }
+
+    if (FoundConfig->Steps.IsEmpty())
+    {
+        UE_LOG(
+            LogDIBattleEncounter,
+            Error,
+            TEXT("StartMidFightQTE FAILED | Config has no Steps | StepId=%s"),
+            *StepId.ToString());
+
+        return false;
+    }
+
+    const bool bStartedQTE = StartEncounterQTE(*FoundConfig);
+
+    UE_LOG(
+        LogDIBattleEncounter,
+        Warning,
+        TEXT("StartMidFightQTE RESULT | StepId=%s | Started=%s"),
+        *StepId.ToString(),
+        bStartedQTE ? TEXT("TRUE") : TEXT("FALSE"));
+
+    return bStartedQTE;
 }
 
 
@@ -551,7 +633,8 @@ void ADIBattleEncounter::FinishMidFightPresentation()
 		return;
 	}
 
-	// 컷신이 끝났는데 QTE가 아직 살아있으면 실패 처리.
+	// 05가 전체 Mid-Fight 연출 완료를 통보했는데
+	// 아직 QTE가 살아 있다면 안전하게 종료한다.
 	if (IsValid(QTEComponent) && QTEComponent->IsQTEActive())
 	{
 		QTEComponent->CancelQTE();
@@ -562,12 +645,23 @@ void ADIBattleEncounter::FinishMidFightPresentation()
 	UE_LOG(
 		LogDIBattleEncounter,
 		Log,
-		TEXT("MidFight Presentation FINISH: %s | QTE=%s"),
+		TEXT("MidFight Presentation FINISH: %s | ResolvedSteps=%d"),
 		*GetName(),
-		bMidFightQTESucceeded
-		? TEXT("SUCCESS")
-		: TEXT("FAILED"));
+		ResolvedMidFightQTEStepIds.Num());
+	
+	// Mid-Fight 전체 연출이 끝난 뒤부터 Boss Part 2 공격 패턴을 사용한다.
+	// Phase 전환을 먼저 완료한 뒤 AI Presentation 상태를 해제한다.
+	for (ADongincheonEnemyBase* Enemy : SpawnedEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
 
+		Enemy->SetPhase2Active(true);
+	}
+
+	// 실제 Combat 복귀는 Mid-Fight 전체 연출이 끝난 이 시점에서만 수행한다.
 	ResumeCombatFromPresentation();
 }
 
@@ -747,7 +841,13 @@ void ADIBattleEncounter::CompleteEncounter()
 	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>
 		(UGameplayStatics::GetPlayerCharacter(this, 0)))
 	{
+		Player->SetCombatInputEnabled(false);
 		Player->SetPresentationInputLocked(false);
+		
+		if (UInteractionComponent* Interaction = Player->FindComponentByClass<UInteractionComponent>())
+		{
+			Interaction->SetInteractionEnabled(true);
+		}
 	}
 	
 	HideEncounterHUD();

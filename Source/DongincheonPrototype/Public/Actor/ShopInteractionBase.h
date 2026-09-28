@@ -31,6 +31,7 @@ public:
 
 	// IInteractable
 	virtual void Interact_Implementation(AActor* Interactor) override;
+	virtual bool CancelInteraction_Implementation(AActor* Interactor) override;
 	virtual FText GetInteractionText_Implementation() const override;
 
 	// Alignment용 기준 Transform

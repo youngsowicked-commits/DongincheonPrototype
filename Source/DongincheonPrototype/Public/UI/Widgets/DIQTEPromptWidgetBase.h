@@ -50,16 +50,32 @@ private:
     // 실제 Texture / Material은 WBP Class Defaults에서 지정한다.
 
     UPROPERTY(EditDefaultsOnly, Category = "HUD|QTE|Icons")
-    FSlateBrush LightIconBrush;
+    FSlateBrush LightInactiveIconBrush;
 
     UPROPERTY(EditDefaultsOnly, Category = "HUD|QTE|Icons")
-    FSlateBrush HeavyIconBrush;
+    FSlateBrush LightActiveIconBrush;
 
     UPROPERTY(EditDefaultsOnly, Category = "HUD|QTE|Icons")
-    FSlateBrush DodgeIconBrush;
+    FSlateBrush HeavyInactiveIconBrush;
 
     UPROPERTY(EditDefaultsOnly, Category = "HUD|QTE|Icons")
-    FSlateBrush GuardIconBrush;
+    FSlateBrush HeavyActiveIconBrush;
+
+    UPROPERTY(EditDefaultsOnly, Category = "HUD|QTE|Icons")
+    FSlateBrush DodgeInactiveIconBrush;
+
+    UPROPERTY(EditDefaultsOnly, Category = "HUD|QTE|Icons")
+    FSlateBrush DodgeActiveIconBrush;
+
+    UPROPERTY(EditDefaultsOnly, Category = "HUD|QTE|Icons")
+    FSlateBrush GuardInactiveIconBrush;
+
+    UPROPERTY(EditDefaultsOnly, Category = "HUD|QTE|Icons")
+    FSlateBrush GuardActiveIconBrush;
+    
+    UPROPERTY(EditDefaultsOnly, Category = "HUD|QTE|Icons",
+    meta = (ClampMin = "0.05"))
+    float IconBlinkInterval = 0.22f;
 
     // QTETimeFillImage Material에서 사용할 Scalar Parameter 이름.
     UPROPERTY(EditDefaultsOnly, Category = "HUD|QTE|Timer")
@@ -70,6 +86,12 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<UMaterialInstanceDynamic> QTETimeFillMID;
+    
+    UPROPERTY(Transient)
+    float IconBlinkElapsedTime = 0.0f;
+
+    UPROPERTY(Transient)
+    bool bShowActiveIcon = true;
 
     UFUNCTION()
     void HandleQTEStarted(FName QTEId,int32 RequiredInputCount);
@@ -89,7 +111,10 @@ private:
     void RefreshInputIcon();
     void RefreshTimer();
 
-    const FSlateBrush* GetBrushForInput(EQTEInputType InputType) const;
+    void ResetIconBlink();
+    void UpdateIconBlink(float InDeltaTime);
+
+    const FSlateBrush* GetBrushForInput(EQTEInputType InputType,bool bUseActiveBrush) const;
 
     void SetPromptVisible(bool bVisible);
 };

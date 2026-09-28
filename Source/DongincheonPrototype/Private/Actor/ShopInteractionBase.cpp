@@ -6,6 +6,7 @@
 #include "Components/SceneComponent.h"
 #include "Components/HealthComponent.h"
 #include "Components/BoxComponent.h"
+#include "Components/InteractionComponent.h"
 #include "Camera/CameraComponent.h"
 #include "TimerManager.h"
 
@@ -61,13 +62,19 @@ void AShopInteractionBase::Interact_Implementation(AActor* Interactor)
         return;
     }
 
-    APlayerController* PlayerController = Cast<APlayerController>(Player->GetController());
+	APlayerController* PlayerController = Cast<APlayerController>(Player->GetController());
 
-    if (!IsValid(PlayerController))
-    {
-        UE_LOG(LogTemp, Error, TEXT("SHOP FAIL: Invalid PlayerController"));
-        return;
-    }
+	if (!IsValid(PlayerController))
+	{
+		UE_LOG(LogTemp, Error, TEXT("SHOP FAIL: Invalid PlayerController"));
+
+		if (UInteractionComponent* Interaction = Player->FindComponentByClass<UInteractionComponent>())
+		{
+			Interaction->NotifyInteractionEnded(this);
+		}
+
+		return;
+	}
 
     InteractionState = EShopInteractionState::Entering;
     ActiveInteractor = Player;
@@ -75,26 +82,27 @@ void AShopInteractionBase::Interact_Implementation(AActor* Interactor)
 
     Player->SetInteractionInputLocked(true);
 
-    if (!AlignInteractorToPoint(Player))
-    {
-        UE_LOG(LogTemp, Error, TEXT("SHOP FAIL: Alignment failed"));
+	if (!AlignInteractorToPoint(Player))
+	{
+		UE_LOG(LogTemp, Error, TEXT("SHOP FAIL: Alignment failed"));
 
-        Player->SetInteractionInputLocked(false);
-        ActiveInteractor = nullptr;
-        PreviousViewTarget = nullptr;
-        InteractionState = EShopInteractionState::Idle;
-        return;
-    }
+		Player->SetInteractionInputLocked(false);
+
+		ActiveInteractor = nullptr;
+		PreviousViewTarget = nullptr;
+		InteractionState = EShopInteractionState::Idle;
+
+		if (UInteractionComponent* Interaction = Player->FindComponentByClass<UInteractionComponent>())
+		{
+			Interaction->NotifyInteractionEnded(this);
+		}
+
+		return;
+	}
 
     UE_LOG(LogTemp, Warning, TEXT("SHOP: Alignment PASS | BlendTime=%.2f"), InteractionCameraBlendTime);
 
-    PlayerController->SetViewTargetWithBlend(
-        this,
-        InteractionCameraBlendTime,
-        VTBlend_Cubic,
-        2.0f,
-        false
-    );
+    PlayerController->SetViewTargetWithBlend(this,InteractionCameraBlendTime,VTBlend_Cubic,2.0f,false);
 
     if (InteractionCameraBlendTime <= 0.0f)
     {
@@ -103,15 +111,32 @@ void AShopInteractionBase::Interact_Implementation(AActor* Interactor)
         return;
     }
 
-    GetWorldTimerManager().SetTimer(
-        InteractionTransitionTimerHandle,
-        this,
-        &AShopInteractionBase::FinishShopInteractionEnter,
-        InteractionCameraBlendTime,
-        false
-    );
+    GetWorldTimerManager().SetTimer(InteractionTransitionTimerHandle,this,&AShopInteractionBase::FinishShopInteractionEnter,
+        InteractionCameraBlendTime,false);
 
     UE_LOG(LogTemp, Warning, TEXT("SHOP: Enter timer started"));
+}
+
+bool AShopInteractionBase::CancelInteraction_Implementation(AActor* Interactor)
+{
+	if (InteractionState != EShopInteractionState::Active)
+	{
+		return false;
+	}
+
+	if (!IsValid(ActiveInteractor))
+	{
+		return false;
+	}
+
+	if (Interactor != ActiveInteractor)
+	{
+		return false;
+	}
+
+	EndShopInteraction();
+
+	return true;
 }
 
 FText AShopInteractionBase::GetInteractionText_Implementation() const
@@ -328,14 +353,29 @@ void AShopInteractionBase::FinishShopInteractionReturn()
 		return;
 	}
 
+	// ActiveInteractor를 지우기 전에 Player 보관
+	ADongincheonCharacter* Player = ActiveInteractor.Get();
+
+	// Input Mode는 ActiveInteractor가 살아 있을 때 복구해야 함
 	RestoreGameplayInputMode();
 
-	if (IsValid(ActiveInteractor))
+	if (IsValid(Player))
 	{
-		ActiveInteractor->SetInteractionInputLocked(false);
+		Player->SetInteractionInputLocked(false);
 	}
 
+	// Shop Native Runtime State 종료
 	ActiveInteractor = nullptr;
 	PreviousViewTarget = nullptr;
 	InteractionState = EShopInteractionState::Idle;
+
+	// InteractionComponent에게
+	// "Shop Interaction이 완전히 종료됐다"고 알려준다.
+	if (IsValid(Player))
+	{
+		if (UInteractionComponent* Interaction = Player->FindComponentByClass<UInteractionComponent>())
+		{
+			Interaction->NotifyInteractionEnded(this);
+		}
+	}
 }

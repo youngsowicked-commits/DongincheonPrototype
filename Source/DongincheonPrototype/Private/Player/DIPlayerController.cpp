@@ -1,8 +1,32 @@
 ﻿#include "Player/DIPlayerController.h"
 
+#include "Character/DongincheonCharacter.h"
 #include "Components/HealthComponent.h"
 #include "Components/TargetingComponent.h"
 #include "UI/Widgets/DIHUDRootWidget.h"
+
+void ADIPlayerController::SetCinematicControlLocked(bool bLocked)
+{
+    if (bCinematicControlLocked == bLocked)
+    {
+        return;
+    }
+
+    bCinematicControlLocked = bLocked;
+
+    SetIgnoreMoveInput(bLocked);
+    SetIgnoreLookInput(bLocked);
+
+    if (ADongincheonCharacter* PlayerCharacter = Cast<ADongincheonCharacter>(GetPawn()))
+    {
+        PlayerCharacter->SetPresentationInputLocked(bLocked);
+    }
+}
+
+bool ADIPlayerController::IsCinematicControlLocked() const
+{
+    return bCinematicControlLocked;
+}
 
 void ADIPlayerController::BeginPlay()
 {
@@ -17,6 +41,14 @@ void ADIPlayerController::OnPossess(APawn* InPawn)
 
     BindPlayerHealthToHUD();
     BindTargetingToHUD();
+
+    if (bCinematicControlLocked)
+    {
+        if (ADongincheonCharacter* PlayerCharacter = Cast<ADongincheonCharacter>(InPawn))
+        {
+            PlayerCharacter->SetPresentationInputLocked(true);
+        }
+    }
 }
 
 void ADIPlayerController::BindPlayerHealthToHUD()
@@ -93,12 +125,14 @@ UDIHUDRootWidget* ADIPlayerController::GetHUDRootWidget() const
 
 void ADIPlayerController::SetHUDContext(EDIHUDContext NewContext)
 {
+    CurrentHUDContext = NewContext;
+
     if (!IsValid(HUDRootWidget))
     {
         return;
     }
 
-    HUDRootWidget->SetHUDContext(NewContext);
+    HUDRootWidget->SetHUDContext(CurrentHUDContext);
 }
 
 void ADIPlayerController::SetQTESource(UQTEComponent* InQTEComponent)
@@ -266,10 +300,12 @@ void ADIPlayerController::CreateHUD()
     {
         return;
     }
-    
+
+    HUDRootWidget->SetHUDContext(CurrentHUDContext);
+
     HUDRootWidget->AddToPlayerScreen();
-    
+
     BindPlayerHealthToHUD();
-    
+
     BindTargetingToHUD();
 }

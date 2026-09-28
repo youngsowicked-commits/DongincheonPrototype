@@ -38,22 +38,22 @@ namespace
 		return true;
 	}
 	
-	const FDIAttackPattern* SelectWeightedAttackPattern(const UDIEnemyDefinition* Definition)
+	const FDIAttackPattern* SelectWeightedAttackPattern(const UDIEnemyDefinition* Definition,const TArray<FDIAttackPattern>& Patterns)
 	{
 		if (!IsValid(Definition))
 		{
 			return nullptr;
 		}
-		
+
 		float TotalWeight = 0.0f;
-		
-		for (const FDIAttackPattern& Pattern : Definition->AttackPatterns)
+
+		for (const FDIAttackPattern& Pattern : Patterns)
 		{
 			if (!IsValidAttackPattern(Definition, Pattern))
 			{
 				continue;
 			}
-			
+
 			TotalWeight += Pattern.Weight;
 		}
 
@@ -61,34 +61,33 @@ namespace
 		{
 			return nullptr;
 		}
-		
+
 		float RandomValue = FMath::FRandRange(0.0f, TotalWeight);
-		
+
 		const FDIAttackPattern* LastValidPattern = nullptr;
-		
-		for (const FDIAttackPattern& Pattern : Definition->AttackPatterns)
+
+		for (const FDIAttackPattern& Pattern : Patterns)
 		{
 			if (!IsValidAttackPattern(Definition, Pattern))
 			{
 				continue;
 			}
-			
+
 			LastValidPattern = &Pattern;
-			
+
 			RandomValue -= Pattern.Weight;
-			
+
 			if (RandomValue <= 0.0f)
 			{
 				return &Pattern;
 			}
 		}
-		
+
 		return LastValidPattern;
 	}
 }
 
-EStateTreeRunStatus FDIAttackTask::EnterState(FStateTreeExecutionContext& Context,
-	const FStateTreeTransitionResult& Transition) const
+EStateTreeRunStatus FDIAttackTask::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	
@@ -124,14 +123,35 @@ EStateTreeRunStatus FDIAttackTask::EnterState(FStateTreeExecutionContext& Contex
 		return EStateTreeRunStatus::Failed;
 	}
 	
-	//AttackPatterns가 존재하고 유효하면 Pattern을 랜덤 선택
+	// 현재 Boss Phase에 맞는 Attack Pattern을 선택한다.
+	// Phase 2 Pattern이 없거나 모두 Invalid이면 기존 Phase 1 Pattern으로 안전하게 fallback한다.
 	if (IsValid(Enemy->EnemyDefinition))
 	{
-		const FDIAttackPattern* SelectedPattern = SelectWeightedAttackPattern(Enemy->EnemyDefinition);
-		
+		const UDIEnemyDefinition* Definition = Enemy->EnemyDefinition;
+
+		const FDIAttackPattern* SelectedPattern = nullptr;
+
+		if (Enemy->IsPhase2Active())
+		{
+			SelectedPattern = SelectWeightedAttackPattern(Definition,Definition->Phase2AttackPatterns);
+		}
+
+		if (!SelectedPattern)
+		{
+			SelectedPattern = SelectWeightedAttackPattern(Definition,Definition->AttackPatterns);
+		}
+
 		if (SelectedPattern)
 		{
 			InstanceData.ActiveAttackSequece = SelectedPattern->AttackIndices;
+
+			UE_LOG(
+				LogTemp,
+				Log,
+				TEXT("DI Attack Task: Pattern Selected | Enemy=%s | Phase2=%s | Hits=%d"),
+				*Enemy->GetName(),
+				Enemy->IsPhase2Active() ? TEXT("TRUE") : TEXT("FALSE"),
+				InstanceData.ActiveAttackSequece.Num());
 		}
 	}
 	

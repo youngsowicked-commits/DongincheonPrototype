@@ -18,6 +18,12 @@ class DONGINCHEONPROTOTYPE_API ADIPlayerController : public APlayerController
 public:
 	UFUNCTION(BlueprintPure, Category = "HUD")
 	UDIHUDRootWidget* GetHUDRootWidget() const;
+	
+	UFUNCTION(BlueprintCallable, Category = "Player|Cinematic")
+	void SetCinematicControlLocked(bool bLocked);
+
+	UFUNCTION(BlueprintPure, Category = "Player|Cinematic")
+	bool IsCinematicControlLocked() const;
 
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void SetHUDContext(EDIHUDContext NewContext);
@@ -76,5 +82,8 @@ private:
 	UPROPERTY(Transient)
 	EDIHUDContext CurrentHUDContext = EDIHUDContext::Gameplay;
 
+	UPROPERTY(Transient)
+	bool bCinematicControlLocked = false;
+	
 	void CreateHUD();
 };

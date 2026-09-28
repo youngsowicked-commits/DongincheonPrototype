@@ -3,6 +3,7 @@
 #include "Character/DongincheonCharacter.h"
 #include "Components/SceneComponent.h"
 #include "Components/BoxComponent.h"
+#include "Components/InteractionComponent.h"
 #include "Gameplay/Collision/DICollisionChannels.h"
 
 AInspectableInteractionBase::AInspectableInteractionBase()
@@ -89,13 +90,29 @@ void AInspectableInteractionBase::EndInspection()
 		return;
 	}
 
-	OnInspectionEnded();
+	// ActiveInteractor를 지우기 전에 Player 보관
+	ADongincheonCharacter* Player = ActiveInteractor.Get();
 
-	if (IsValid(ActiveInteractor))
+	// 1. Native Runtime State 먼저 종료
+	InteractionState = EInspectableInteractionState::Idle;
+	ActiveInteractor = nullptr;
+
+	// 2. Player Input 복구
+	if (IsValid(Player))
 	{
-		ActiveInteractor->SetInteractionInputLocked(false);
+		Player->SetInteractionInputLocked(false);
 	}
 
-	ActiveInteractor = nullptr;
-	InteractionState = EInspectableInteractionState::Idle;
+	// 3. BP Presentation 종료
+	// BP_InspectableBase에서는 여기서 Inspect Widget 제거
+	OnInspectionEnded();
+
+	// 4. InteractionComponent에 Active Interaction 종료 통보
+	if (IsValid(Player))
+	{
+		if (UInteractionComponent* Interaction = Player->FindComponentByClass<UInteractionComponent>())
+		{
+			Interaction->NotifyInteractionEnded(this);
+		}
+	}
 }

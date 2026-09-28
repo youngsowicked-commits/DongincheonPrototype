@@ -93,6 +93,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Player|Input")
 	bool IsGameplayInputLocked() const;
 	
+	UFUNCTION(BlueprintCallable, Category = "Player|Combat")
+	void SetCombatInputEnabled(bool bEnabled);
+
+	UFUNCTION(BlueprintPure, Category = "Player|Combat")
+	bool IsCombatInputEnabled() const;
+	
 	void FinalizePlayerDeath();
 	
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
@@ -388,6 +394,9 @@ protected:
 	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Input|Runtime")
 	bool bInteractionInputLocked = false;
+	
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
+	bool bCombatInputEnabled = false;
 	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
 	bool bPlayerAttackActive = false;

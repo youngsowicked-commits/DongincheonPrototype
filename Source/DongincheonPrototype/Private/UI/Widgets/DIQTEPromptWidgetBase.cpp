@@ -8,6 +8,8 @@ void UDIQTEPromptWidgetBase::SetQTESource(UQTEComponent* InQTEComponent)
 {
     if (QTESource == InQTEComponent)
     {
+        ResetIconBlink();
+
         BindQTESource();
         RefreshPrompt();
         return;
@@ -16,6 +18,8 @@ void UDIQTEPromptWidgetBase::SetQTESource(UQTEComponent* InQTEComponent)
     UnbindQTESource();
 
     QTESource = InQTEComponent;
+
+    ResetIconBlink();
 
     BindQTESource();
     RefreshPrompt();
@@ -26,6 +30,8 @@ void UDIQTEPromptWidgetBase::ClearQTESource()
     UnbindQTESource();
 
     QTESource = nullptr;
+    
+    ResetIconBlink();
 
     if (IsValid(QTEInputIcon))
     {
@@ -77,6 +83,7 @@ void UDIQTEPromptWidgetBase::NativeTick(const FGeometry& MyGeometry,float InDelt
         return;
     }
 
+    UpdateIconBlink(InDeltaTime);
     RefreshTimer();
 }
 
@@ -110,6 +117,7 @@ void UDIQTEPromptWidgetBase::UnbindQTESource()
 
 void UDIQTEPromptWidgetBase::HandleQTEStarted(FName QTEId,int32 RequiredInputCount)
 {
+    ResetIconBlink();
     RefreshPrompt();
 }
 
@@ -120,12 +128,15 @@ void UDIQTEPromptWidgetBase::HandleQTEProgress(FName QTEId,int32 CurrentInputCou
         return;
     }
 
+    ResetIconBlink();
     RefreshInputIcon();
     RefreshTimer();
 }
 
 void UDIQTEPromptWidgetBase::HandleQTECompleted(FName QTEId,EQTEResult Result)
 {
+    ResetIconBlink();
+    
     if (IsValid(QTETimeFillMID))
     {
         QTETimeFillMID->SetScalarParameterValue(TimeProgressParameterName,0.0f);
@@ -178,7 +189,7 @@ void UDIQTEPromptWidgetBase::RefreshInputIcon()
         return;
     }
 
-    const FSlateBrush* InputBrush = GetBrushForInput(QTESource->GetExpectedInput());
+    const FSlateBrush* InputBrush = GetBrushForInput(QTESource->GetExpectedInput(),bShowActiveIcon);
 
     if (!InputBrush)
     {
@@ -208,21 +219,51 @@ void UDIQTEPromptWidgetBase::RefreshTimer()
     QTETimeFillMID->SetScalarParameterValue(TimeProgressParameterName,QTESource->GetRemainingTimeNormalized());
 }
 
-const FSlateBrush* UDIQTEPromptWidgetBase::GetBrushForInput(EQTEInputType InputType) const
+void UDIQTEPromptWidgetBase::ResetIconBlink()
+{
+    IconBlinkElapsedTime = 0.0f;
+    bShowActiveIcon = true;
+}
+
+void UDIQTEPromptWidgetBase::UpdateIconBlink(float InDeltaTime)
+{
+    if (IconBlinkInterval <= KINDA_SMALL_NUMBER)
+    {
+        return;
+    }
+
+    IconBlinkElapsedTime += InDeltaTime;
+
+    if (IconBlinkElapsedTime < IconBlinkInterval)
+    {
+        return;
+    }
+
+    IconBlinkElapsedTime =
+        FMath::Fmod(
+            IconBlinkElapsedTime,
+            IconBlinkInterval);
+
+    bShowActiveIcon = !bShowActiveIcon;
+
+    RefreshInputIcon();
+}
+
+const FSlateBrush* UDIQTEPromptWidgetBase::GetBrushForInput(EQTEInputType InputType,bool bUseActiveBrush) const
 {
     switch (InputType)
     {
     case EQTEInputType::Light:
-        return &LightIconBrush;
+        return bUseActiveBrush ? &LightActiveIconBrush : &LightInactiveIconBrush;
 
     case EQTEInputType::Heavy:
-        return &HeavyIconBrush;
+        return bUseActiveBrush ? &HeavyActiveIconBrush : &HeavyInactiveIconBrush;
 
     case EQTEInputType::Dodge:
-        return &DodgeIconBrush;
+        return bUseActiveBrush ? &DodgeActiveIconBrush : &DodgeInactiveIconBrush;
 
     case EQTEInputType::Guard:
-        return &GuardIconBrush;
+        return bUseActiveBrush ? &GuardActiveIconBrush : &GuardInactiveIconBrush;
 
     case EQTEInputType::None:
     default:

@@ -133,6 +133,11 @@ void ADongincheonCharacter::HandleLockOnSwitch(const FInputActionValue& Value)
 	{
 		return;
 	}
+	
+	if (!bCombatInputEnabled)
+	{
+		return;
+	}
 
 	if (!IsValid(TargetingComponent))
 	{
@@ -159,6 +164,11 @@ void ADongincheonCharacter::HandleLockOnStarted(const FInputActionValue& Value)
 	(void)Value;
 	
 	if (IsGameplayInputLocked())
+	{
+		return;
+	}
+	
+	if (!bCombatInputEnabled)
 	{
 		return;
 	}
@@ -278,6 +288,46 @@ void ADongincheonCharacter::SetInteractionInputLocked(bool bLocked)
 	bInteractionInputLocked = bLocked;
 }
 
+void ADongincheonCharacter::SetCombatInputEnabled(bool bEnabled)
+{
+	if (bCombatInputEnabled == bEnabled)
+	{
+		return;
+	}
+
+	bCombatInputEnabled = bEnabled;
+
+	if (bEnabled)
+	{
+		return;
+	}
+
+	// Combat 종료 후 예약 입력이 Exploration에서 이어지지 않게 정리.
+	QueuedAttackType = EQueuedAttackType::None;
+
+	// Guard는 Hold 입력이므로 Combat 종료 시 반드시 해제한다.
+	bGuardInputHeld = false;
+
+	if (IsValid(CombatComponent) && CombatComponent->IsGuarding())
+	{
+		StopPlayerGuard(0.05f);
+	}
+
+	// Grab 상태에서는 Combat 종료 후 Release 입력도 막히므로 즉시 정리한다.
+	CancelPlayerGrab(0.05f);
+
+	// Exploration에서는 Lock-On을 유지하지 않는다.
+	if (IsValid(TargetingComponent))
+	{
+		TargetingComponent->ClearLockOn();
+	}
+}
+
+bool ADongincheonCharacter::IsCombatInputEnabled() const
+{
+	return bCombatInputEnabled;
+}
+
 //Attack Input
 void ADongincheonCharacter::HandleAttackInput()
 {
@@ -288,6 +338,11 @@ void ADongincheonCharacter::HandleAttackInput()
 	}
 
 	if (IsGameplayInputLocked())
+	{
+		return;
+	}
+	
+	if (!bCombatInputEnabled)
 	{
 		return;
 	}
@@ -439,6 +494,11 @@ AActor* ADongincheonCharacter::ResolveContextualHeatActionTarget(const UDIHeatAc
 bool ADongincheonCharacter::TryStartContextualHeatAction()
 {
 	if (!IsValid(HealthComponent) || !IsValid(CombatComponent) || !IsValid(HeatActionComponent))
+	{
+		return false;
+	}
+	
+	if (!bCombatInputEnabled)
 	{
 		return false;
 	}
@@ -642,6 +702,11 @@ void ADongincheonCharacter::HandleHeavyAttackInput()
 		return;
 	}
 
+	if (!bCombatInputEnabled)
+	{
+		return;
+	}
+	
 	if (!IsValid(HealthComponent) || !IsValid(CombatComponent))
 	{
 		return;
@@ -994,6 +1059,11 @@ void ADongincheonCharacter::HandleDodgeInput()
 		return;
 	}
 	
+	if (!bCombatInputEnabled)
+	{
+		return;
+	}
+	
 	if (!IsValid(HealthComponent) || HealthComponent->IsDead())
 	{
 		return;
@@ -1021,6 +1091,11 @@ void ADongincheonCharacter::HandleGrabInput()
 
 	// Cancel할 Interaction이 없을 때만 일반 Gameplay Lock 판정.
 	if (IsGameplayInputLocked())
+	{
+		return;
+	}
+	
+	if (!bCombatInputEnabled)
 	{
 		return;
 	}
@@ -1887,6 +1962,16 @@ void ADongincheonCharacter::HandleGuardStarted()
 	if (bPresentationInputLocked)
 	{
 		OnQTEInputPressed.Broadcast(EQTEInputType::Guard);
+		return;
+	}
+	
+	if (IsGameplayInputLocked())
+	{
+		return;
+	}
+
+	if (!bCombatInputEnabled)
+	{
 		return;
 	}
 	

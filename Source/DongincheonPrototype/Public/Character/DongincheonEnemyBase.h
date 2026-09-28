@@ -61,6 +61,14 @@ public:
 	void FinishAttack();
 	void CancelAttack(float BlendOutTime = 0.1f);
 	
+	// Boss Mid-Fight 이후 공격 패턴 전환용.
+	// 일반 Enemy는 기본값 false이므로 기존 동작 그대로 유지한다.
+	void SetPhase2Active(bool bActive);
+	bool IsPhase2Active() const
+	{
+		return bPhase2Active;
+	}
+	
 	//Hit
 	bool StartHitReact();
 	bool IsHitReactActive() const;
@@ -82,6 +90,10 @@ private:
 	
 	// BreakFree Montage가 끝나거나 중단됐을 때 호출된다.
 	void HandleGrabBreakMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	
+	// Mid-Fight 이후 Boss Part 2 공격 패턴 사용 여부.
+	// 일반 Enemy 및 Boss Part 1에서는 false.
+	bool bPhase2Active = false;
 	
 	UPROPERTY(Transient)
 	int32 ActiveAttackIndex = INDEX_NONE;

@@ -23,6 +23,24 @@ public:
 	bool CancelCurrentInteraction();
 	
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void NotifyInteractionEnded(AActor* Interactable);
+
+	UFUNCTION(BlueprintPure, Category = "Interaction")
+	bool IsInteracting() const
+	{
+		return IsValid(ActiveInteractable.Get());
+	}
+	
+	UFUNCTION(BlueprintCallable, Category = "Interaction|Availability")
+	void SetInteractionEnabled(bool bEnabled);
+
+	UFUNCTION(BlueprintPure, Category = "Interaction|Availability")
+	bool IsInteractionEnabled() const
+	{
+		return bInteractionEnabled;
+	}
+	
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	FText GetCurrentInteractionText() const;
 	
 	UPROPERTY(BlueprintAssignable, Category = "Interaction")
@@ -45,6 +63,12 @@ private:
 	
 	UPROPERTY(Transient)
 	TObjectPtr<AActor> CurrentInteractable = nullptr;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> ActiveInteractable = nullptr;
+	
+	UPROPERTY(VisibleInstanceOnly, Category = "Interaction|Runtime")
+	bool bInteractionEnabled = true;
 	
 	FTimerHandle InteractionUpdateTimerHandle;
 	

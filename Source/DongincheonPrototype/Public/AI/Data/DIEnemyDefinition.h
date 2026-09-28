@@ -39,6 +39,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Animation|Attack")
 	TArray<FDIAttackPattern> AttackPatterns;
 	
+	// Mid-Fight 이후 Combat Phase 2에서 사용할 공격 패턴.
+	// 비어 있으면 기존 AttackPatterns를 그대로 사용한다.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Animation|Attack")
+	TArray<FDIAttackPattern> Phase2AttackPatterns;
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Hit React")
 	FHitReactConfig HitReact;
 	

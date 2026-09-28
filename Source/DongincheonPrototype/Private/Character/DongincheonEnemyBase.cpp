@@ -396,6 +396,23 @@ void ADongincheonEnemyBase::CancelAttack(float BlendOutTime)
 	ActiveAttackIndex = INDEX_NONE;
 }
 
+void ADongincheonEnemyBase::SetPhase2Active(bool bActive)
+{
+	if (bPhase2Active == bActive)
+	{
+		return;
+	}
+
+	bPhase2Active = bActive;
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("01B BOSS PHASE | Enemy=%s | Phase2=%s"),
+		*GetNameSafe(this),
+		bPhase2Active ? TEXT("TRUE") : TEXT("FALSE"));
+}
+
 bool ADongincheonEnemyBase::StartHitReact()
 {
 	if (!EnemyDefinition)

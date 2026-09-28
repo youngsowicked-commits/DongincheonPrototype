@@ -22,26 +22,68 @@ UInteractionComponent::UInteractionComponent()
 	// ...
 }
 
+void UInteractionComponent::SetInteractionEnabled(bool bEnabled)
+{
+	if (bInteractionEnabled == bEnabled)
+	{
+		return;
+	}
+
+	if (!bEnabled)
+	{
+		// 먼저 Availability를 닫아 Cancel 과정에서 후보가 다시 잡히지 않게 한다.
+		bInteractionEnabled = false;
+
+		// 실행 중 Interaction이 있으면 대상에게 정상 종료 요청.
+		CancelCurrentInteraction();
+
+		ActiveInteractable = nullptr;
+		CurrentInteractable = nullptr;
+
+		OnInteractableChanged.Broadcast(nullptr);
+		return;
+	}
+
+	bInteractionEnabled = true;
+
+	UpdateCurrentInteractable();
+}
+
 bool UInteractionComponent::Interact()
 {
-	ADongincheonCharacter* Player = Cast<ADongincheonCharacter>(GetOwner());
+	if (!bInteractionEnabled)
+	{
+		return false;
+	}
+
+	// 이미 NPC / Shop / Inspectable 등이 실행 중이면
+	// 새로운 Interaction 시작 금지.
+	if (IsValid(ActiveInteractable.Get()))
+	{
+		return false;
+	}
+
+	ADongincheonCharacter* Player =
+		Cast<ADongincheonCharacter>(GetOwner());
 
 	if (IsValid(Player) && Player->IsGameplayInputLocked())
 	{
 		return false;
 	}
-	
-	return TryInteract(CurrentInteractable);
+
+	return TryInteract(CurrentInteractable.Get());
 }
 
 bool UInteractionComponent::CancelCurrentInteraction()
 {
-	if (!IsValid(CurrentInteractable))
+	AActor* Target = ActiveInteractable.Get();
+
+	if (!IsValid(Target))
 	{
 		return false;
 	}
 
-	if (!CurrentInteractable->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
+	if (!Target->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
 	{
 		return false;
 	}
@@ -53,20 +95,63 @@ bool UInteractionComponent::CancelCurrentInteraction()
 		return false;
 	}
 
-	return IInteractable::Execute_CancelInteraction(
-		CurrentInteractable,
-		OwnerActor
-	);
+	const bool bCancelled = IInteractable::Execute_CancelInteraction(Target,OwnerActor);
+
+	if (!bCancelled)
+	{
+		return false;
+	}
+
+	// 대상 쪽에서 먼저 NotifyInteractionEnded를 호출하지 않았다면
+	// Component가 여기서 정리.
+	if (ActiveInteractable.Get() == Target)
+	{
+		NotifyInteractionEnded(Target);
+	}
+
+	return true;
+}
+
+void UInteractionComponent::NotifyInteractionEnded(AActor* Interactable)
+{
+	if (ActiveInteractable.Get() != Interactable)
+	{
+		return;
+	}
+
+	ActiveInteractable = nullptr;
+
+	// Combat 등으로 Interaction 전체가 Disable된 상태면
+	// Prompt를 다시 찾지 않는다.
+	if (!bInteractionEnabled)
+	{
+		CurrentInteractable = nullptr;
+		OnInteractableChanged.Broadcast(nullptr);
+		return;
+	}
+
+	// 정상 종료라면 주변 후보를 다시 검사.
+	UpdateCurrentInteractable();
 }
 
 FText UInteractionComponent::GetCurrentInteractionText() const
 {
-	if (!IsValid(CurrentInteractable))
+	if (!bInteractionEnabled)
 	{
 		return FText::GetEmpty();
 	}
-	
-	return IInteractable::Execute_GetInteractionText(CurrentInteractable);
+
+	if (IsValid(ActiveInteractable.Get()))
+	{
+		return FText::GetEmpty();
+	}
+
+	if (!IsValid(CurrentInteractable.Get()))
+	{
+		return FText::GetEmpty();
+	}
+
+	return IInteractable::Execute_GetInteractionText(CurrentInteractable.Get());
 }
 
 void UInteractionComponent::BeginPlay()
@@ -86,39 +171,82 @@ void UInteractionComponent::BeginPlay()
 
 void UInteractionComponent::UpdateCurrentInteractable()
 {
+	if (!bInteractionEnabled)
+	{
+		return;
+	}
+
+	// Interaction 실행 중에는 새로운 후보 Scan 금지.
+	if (IsValid(ActiveInteractable.Get()))
+	{
+		if (IsValid(CurrentInteractable.Get()))
+		{
+			CurrentInteractable = nullptr;
+			OnInteractableChanged.Broadcast(nullptr);
+		}
+
+		return;
+	}
+
 	AActor* NewInteractable = FindBestInteractable();
-	
+
 	if (bDebugInteraction)
 	{
 		DrawInteractionDebug(NewInteractable);
 	}
-	
+
 	if (CurrentInteractable != NewInteractable)
 	{
 		CurrentInteractable = NewInteractable;
-		
+
 		OnInteractableChanged.Broadcast(CurrentInteractable.Get());
 	}
 }
 
 bool UInteractionComponent::TryInteract(AActor* Target)
 {
+	if (!bInteractionEnabled)
+	{
+		return false;
+	}
+
+	if (IsValid(ActiveInteractable.Get()))
+	{
+		return false;
+	}
+
 	if (!IsValid(Target))
 	{
 		return false;
 	}
+
 	if (!Target->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
 	{
 		return false;
 	}
-	
-	IInteractable::Execute_Interact(Target,GetOwner());
-	
+
+	// 후보 → 실행 중 대상으로 승격.
+	ActiveInteractable = Target;
+
+	// Interaction 시작 순간 World Prompt 제거.
+	CurrentInteractable = nullptr;
+	OnInteractableChanged.Broadcast(nullptr);
+
+	IInteractable::Execute_Interact(Target, GetOwner());
+
 	return true;
 }
 
 AActor* UInteractionComponent::FindBestInteractable() const
 {
+	// Interaction 자체가 비활성화됐거나,
+	// 이미 NPC / Shop / Inspectable Interaction이 실행 중이면
+	// 새로운 후보를 찾지 않는다.
+	if (!bInteractionEnabled || IsValid(ActiveInteractable.Get()))
+	{
+		return nullptr;
+	}
+
 	AActor* Owner = GetOwner();
 
 	if (!IsValid(Owner) || !IsValid(GetWorld()))
@@ -131,6 +259,7 @@ AActor* UInteractionComponent::FindBestInteractable() const
 	const FVector OwnerLocation = Owner->GetActorLocation();
 	const FVector OwnerForward = Owner->GetActorForwardVector();
 	const FCollisionShape SearchShape = FCollisionShape::MakeSphere(InteractionRadius);
+
 	const FCollisionObjectQueryParams ObjectQueryParams(DICollision::Interactable);
 
 	FCollisionQueryParams QueryParams;

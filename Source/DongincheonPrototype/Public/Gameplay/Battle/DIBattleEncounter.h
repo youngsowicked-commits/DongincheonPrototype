@@ -67,8 +67,9 @@ public:
         return bMidFightPresentationActive;
     }
 	
+	// StepId와 같은 QTEId를 가진 Mid-Fight QTE Config를 찾아 시작한다.
 	UFUNCTION(BlueprintCallable, Category = "Battle|QTE")
-	bool StartMidFightQTE();
+	bool StartMidFightQTE(FName StepId);
 	
 	UFUNCTION(BlueprintCallable, Category = "Battle|QTE")
 	bool StartEncounterQTE(const FQTEConfig& Config);
@@ -123,8 +124,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Battle|MidFight")
 	FName MidFightTriggerId = TEXT("BossMidFight");
 
+	// Mid-Fight에서 사용할 가변 길이 QTE Step 목록.
+	// 각 FQTEConfig의 QTEId가 StepId 역할을 한다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Battle|MidFight")
-	FQTEConfig MidFightQTEConfig;
+	TArray<FQTEConfig> MidFightQTEConfigs;
 	
 	UFUNCTION(BlueprintImplementableEvent, Category = "Battle|Presentation")
 	void OnHealthTriggerActivated(FName TriggerId, float HealthNormalized);
@@ -171,8 +174,9 @@ private:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Battle|Presentation", meta = (AllowPrivateAccess = "true"))
 	bool bMidFightPresentationActive = false;
 	
-	UPROPERTY(VisibleInstanceOnly, Category = "Battle|Runtime")
-	bool bMidFightQTESucceeded = false;
+	// 이미 완료된 Mid-Fight QTE StepId.
+	// 같은 Step이 실수로 다시 요청되어도 중복 실행되지 않도록 막는다.
+	TSet<FName> ResolvedMidFightQTEStepIds;
 	
 	TWeakObjectPtr<ADongincheonCharacter> PresentationLockedPlayer;
 	
