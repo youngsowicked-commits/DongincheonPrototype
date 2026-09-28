@@ -113,13 +113,18 @@ EStateTreeRunStatus FDIAttackTask::EnterState(FStateTreeExecutionContext& Contex
 	}
 	
 	//높이차이는 의미가 없으므로 XY평면거리만 사용.
-	const float DistanceToTarget = FVector::Dist2D(Enemy->GetActorLocation(), InstanceData.Target->GetActorLocation());
-	
+	const float DistanceToTarget = FVector::Dist2D(Enemy->GetActorLocation(),InstanceData.Target->GetActorLocation());
+
 	if (DistanceToTarget > InstanceData.MaxAttackDistance)
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("DI Attack Task: Target out of range | Enemy=%s | Distance=%.1f | Max=%.1f"),
-			*Enemy->GetName(), DistanceToTarget, InstanceData.MaxAttackDistance);
-		
+		UE_LOG(
+			LogTemp,
+			Verbose,
+			TEXT("DI Attack Task: Target out of range | Enemy=%s | Distance=%.1f | Max=%.1f"),
+			*Enemy->GetName(),
+			DistanceToTarget,
+			InstanceData.MaxAttackDistance);
+
 		return EStateTreeRunStatus::Failed;
 	}
 	
@@ -165,8 +170,15 @@ EStateTreeRunStatus FDIAttackTask::EnterState(FStateTreeExecutionContext& Contex
 	
 	const int32 FirstAttackIndex = InstanceData.ActiveAttackSequece[InstanceData.CurrentSequenceIndex];
 	
-	UE_LOG(LogTemp,Log,TEXT("DI Attack Tast: Pattern Started | Enemy=%s | Hits=%d | FirstAttack=%d"),
-		*Enemy->GetName(), InstanceData.ActiveAttackSequece.Num(),FirstAttackIndex);
+	UE_LOG(
+	LogTemp,
+	Log,
+	TEXT("DI Attack Task: Pattern Started | Enemy=%s | Distance=%.1f | Max=%.1f | Hits=%d | FirstAttack=%d"),
+	*Enemy->GetName(),
+	DistanceToTarget,
+	InstanceData.MaxAttackDistance,
+	InstanceData.ActiveAttackSequece.Num(),
+	FirstAttackIndex);
 	
 if (!Enemy->StartAttack(FirstAttackIndex))
 {

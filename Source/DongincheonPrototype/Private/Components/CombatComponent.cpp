@@ -20,14 +20,15 @@ UCombatComponent::UCombatComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-void UCombatComponent::BeginAttack(float DamageAmount, float KnockbackStrength, bool bBreakGuard)
+void UCombatComponent::BeginAttack(float DamageAmount,float KnockbackStrength,bool bBreakGuard,float HitTraceRadius)
 {
-	ActiveDamageAmount = FMath::Max(0.0f,DamageAmount);
+	ActiveDamageAmount = FMath::Max(0.0f, DamageAmount);
 	ActiveKnockbackStrength = FMath::Max(0.0f, KnockbackStrength);
+	ActiveHitTraceRadius = HitTraceRadius > 0.0f ? HitTraceRadius : DefaultHitTraceRadius;
 	bActiveAttackBreakGuard = bBreakGuard;
-	
+
 	HitActorThisAttack.Reset();
-	
+
 	bAttackActive = true;
 }
 
@@ -37,6 +38,7 @@ void UCombatComponent::EndAttack()
 	
 	ActiveDamageAmount = 0.0f;
 	ActiveKnockbackStrength = 0.0f;
+	ActiveHitTraceRadius = 0.0f;
 	bActiveAttackBreakGuard = false;
 	
 	HitActorThisAttack.Reset();
@@ -133,88 +135,96 @@ void UCombatComponent::ResetAttackHitActors()
 
 
 
-bool UCombatComponent::CollectSocketHitActors(FName SocketName, float TraceRadius, TArray<AActor*>& OutHitActors,
-	bool bDrawDebug) const
+bool UCombatComponent::CollectSocketHitActors(FName SocketName,float TraceRadius,TArray<AActor*>& OutHitActors,
+    bool bDrawDebug) const
 {
-	OutHitActors.Reset();
-	
-	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-	
-	if (!IsValid(OwnerCharacter))
-	{
-		return false;
-	}
-	
-	if (SocketName.IsNone())
-	{
-		return false;
-	}
-	
-	if (TraceRadius <=0.0f)
-	{
-		return false;
-	}
-	
-	USkeletalMeshComponent* Mesh = OwnerCharacter->GetMesh();
-	
-	if (!IsValid(Mesh))
-	{
-		return false;
-	}
-	
-	if (!Mesh->DoesSocketExist(SocketName))
-	{
-		UE_LOG(LogTemp,Warning,TEXT("CombatComponent: Socket/Bone '%s' does not exist on %s"),*SocketName.ToString(),
-		*OwnerCharacter->GetName());
-		
-		return false;
-	}
-	
-	UWorld* World = GetWorld();
-	
-	if (!IsValid(World))
-	{
-		return false;
-	}
-	
-	const FVector HitLocation = Mesh->GetSocketLocation(SocketName);
-	
-	FCollisionObjectQueryParams ObjectQueryParams;
-	
-	ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
-	
-	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(CombatSocketHitTrace),false,OwnerCharacter);
-	
-	const FCollisionShape HitShape = FCollisionShape::MakeSphere(TraceRadius);
-	
-	TArray<FOverlapResult> OverlapResults;
-	
-	World->OverlapMultiByObjectType(OverlapResults,HitLocation,FQuat::Identity,ObjectQueryParams,HitShape,QueryParams);
-	
-	for (const FOverlapResult& Overlap : OverlapResults)
-	{
-		AActor* HitActor = Overlap.GetActor();
-		
-		if (!IsValidCombatTarget(HitActor))
-		{
-			continue;
-		}
-		
-		if (OutHitActors.Contains(HitActor))
-		{
-			continue;
-		}
-		
-		OutHitActors.Add(HitActor);
-	}
-	
-	if (bDrawDebug)
-	{
-		DrawDebugSphere(World,HitLocation,TraceRadius,16,OutHitActors.IsEmpty() ? FColor::Red : FColor::Green, false,
-			1.0f,0,1.5f);
-	}
-	
-	return !OutHitActors.IsEmpty();
+    OutHitActors.Reset();
+
+    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+
+    if (!IsValid(OwnerCharacter) || SocketName.IsNone() || TraceRadius <= 0.0f)
+    {
+        return false;
+    }
+
+    USkeletalMeshComponent* Mesh = OwnerCharacter->GetMesh();
+
+    if (!IsValid(Mesh))
+    {
+        return false;
+    }
+
+    if (!Mesh->DoesSocketExist(SocketName))
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("CombatComponent: Socket/Bone '%s' does not exist on %s"),
+            *SocketName.ToString(),
+            *OwnerCharacter->GetName());
+
+        return false;
+    }
+
+    UWorld* World = GetWorld();
+
+    if (!IsValid(World))
+    {
+        return false;
+    }
+
+    const FVector SocketLocation = Mesh->GetSocketLocation(SocketName);
+
+    FVector TraceStart = OwnerCharacter->GetActorLocation();
+    TraceStart.Z = SocketLocation.Z;
+
+    TraceStart += OwnerCharacter->GetActorForwardVector() * 20.0f;
+
+    const FVector TraceEnd = SocketLocation;
+
+    FCollisionObjectQueryParams ObjectQueryParams;
+    ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
+
+    FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(CombatSocketHitTrace),false,OwnerCharacter);
+
+    const FCollisionShape HitShape = FCollisionShape::MakeSphere(TraceRadius);
+
+    TArray<FHitResult> HitResults;
+
+    World->SweepMultiByObjectType(HitResults,TraceStart,TraceEnd,FQuat::Identity,ObjectQueryParams,
+        HitShape,QueryParams);
+
+    for (const FHitResult& Hit : HitResults)
+    {
+        AActor* HitActor = Hit.GetActor();
+
+        if (!IsValidCombatTarget(HitActor))
+        {
+            continue;
+        }
+
+        if (OutHitActors.Contains(HitActor))
+        {
+            continue;
+        }
+
+        OutHitActors.Add(HitActor);
+    }
+
+    if (bDrawDebug)
+    {
+        const FColor DebugColor = OutHitActors.IsEmpty() ? FColor::Red : FColor::Green;
+
+        DrawDebugLine(World,TraceStart,TraceEnd,DebugColor,false,1.0f,0,2.0f);
+
+        DrawDebugSphere(World,TraceStart,TraceRadius,16,DebugColor,false,1.0f,0,
+            1.5f);
+
+        DrawDebugSphere(World,TraceEnd,TraceRadius,16,DebugColor,false,1.0f,0,
+            1.5f);
+    }
+
+    return !OutHitActors.IsEmpty();
 }
 
 
@@ -355,13 +365,14 @@ bool UCombatComponent::ProcessSocketHit(FName SocketName)
 
 	TArray<AActor*> HitActors;
 
-	if (!CollectSocketHitActors(SocketName, DefaultHitTraceRadius, HitActors, bDrawHitDebug))
+	const float TraceRadius = ActiveHitTraceRadius > 0.0f ? ActiveHitTraceRadius : DefaultHitTraceRadius;
+
+	if (!CollectSocketHitActors(SocketName, TraceRadius, HitActors, bDrawHitDebug))
 	{
 		return false;
 	}
 
-	const FVector HitLocation =
-		Mesh->GetSocketLocation(SocketName);
+	const FVector HitLocation = Mesh->GetSocketLocation(SocketName);
 
 	bool bAnyNewHit = false;
 

@@ -33,6 +33,9 @@ public:
 	UFUNCTION(BlueprintPure, Category="Targeting")
 	AActor* GetLockOnTarget() const;
 	
+	UFUNCTION(BlueprintPure, Category="Targeting")
+	AActor* FindBestAttackAssistTarget(float MaxDistance, float MinForwardDot) const;
+	
 	UFUNCTION(BlueprintCallable, Category = "Targeting")
 	void SwitchTarget(float Direction);
 	

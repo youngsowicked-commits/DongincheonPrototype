@@ -815,50 +815,111 @@ void ADongincheonCharacter::StartPlayerHeavyComboAttack()
 
 void ADongincheonCharacter::StartPlayerAttack(const FAttackConfig& Attack)
 {
-	if (!IsValid(CombatComponent) || !IsValid(GetMesh()) || !IsValid(Attack.Montage))
+    if (!IsValid(CombatComponent) || !IsValid(GetMesh()) || !IsValid(Attack.Montage))
+    {
+        ResetPlayerAttackState();
+        return;
+    }
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+    if (!IsValid(AnimInstance))
+    {
+        ResetPlayerAttackState();
+        return;
+    }
+
+    const float SafePlayRate = Attack.PlayRate > 0.0f ? Attack.PlayRate : 1.0f;
+
+	AActor* AssistTarget = nullptr;
+
+	if (Attack.bUseAttackAssist && IsValid(TargetingComponent))
 	{
-		ResetPlayerAttackState();
-		return;
+		AssistTarget = TargetingComponent->FindBestAttackAssistTarget(Attack.MaxAssistDistance,Attack.MinAssistForwardDot);
 	}
 
-	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    // Attack Facing Assist
+	if (Attack.bUseAttackAssist && IsValid(AssistTarget) && Attack.MaxFacingAssistAngle > 0.0f)
+    {
+        FVector ToTarget = AssistTarget->GetActorLocation() - GetActorLocation();
+        ToTarget.Z = 0.0f;
 
-	if (!IsValid(AnimInstance))
-	{
-		ResetPlayerAttackState();
-		return;
-	}
+        if (ToTarget.Normalize())
+        {
+            const float CurrentYaw = GetActorRotation().Yaw;
+            const float TargetYaw = ToTarget.Rotation().Yaw;
 
-	const float SafePlayRate = Attack.PlayRate > 0.0f ? Attack.PlayRate : 1.0f;
+            const float DeltaYaw = FMath::FindDeltaAngleDegrees(CurrentYaw, TargetYaw);
+            const float AssistedDeltaYaw = FMath::Clamp(
+                DeltaYaw,
+                -Attack.MaxFacingAssistAngle,
+                Attack.MaxFacingAssistAngle);
 
-	CombatComponent->BeginAttack(Attack.Damage,Attack.KnockbackStrength,Attack.bBreaksGuard);
+            SetActorRotation(FRotator(0.0f,CurrentYaw + AssistedDeltaYaw,0.0f));
+        }
+    }
 
-	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-	{
-		Movement->StopMovementImmediately();
+    CombatComponent->BeginAttack(Attack.Damage,Attack.KnockbackStrength,Attack.bBreaksGuard,Attack.HitTraceRadius);
 
-		if (Attack.LungeStrength > 0.0f)
-		{
-			Movement->AddImpulse(GetActorForwardVector() * Attack.LungeStrength,true);
-		}
-	}
+    if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+    {
+        Movement->StopMovementImmediately();
 
-	const float MontageLength = AnimInstance->Montage_Play(Attack.Montage,SafePlayRate,EMontagePlayReturnType::MontageLength,
-			0.0f,Attack.bStopAllMontages);
+        if (Attack.LungeStrength > 0.0f)
+        {
+            FVector LungeDirection = GetActorForwardVector();
+            float LungeScale = 1.0f;
 
-	if (MontageLength <= 0.0f)
-	{
-		ResetPlayerAttackState();
-		return;
-	}
+            if (IsValid(AssistTarget))
+            {
+                FVector ToTarget = AssistTarget->GetActorLocation() - GetActorLocation();
+                ToTarget.Z = 0.0f;
 
-	ActiveAttackMontage = Attack.Montage;
+                const float TargetDistance = ToTarget.Size();
 
-	FOnMontageEnded MontageEndedDelegate;
+                if (ToTarget.Normalize())
+                {
+                    LungeDirection = ToTarget;
 
-	MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleAttackMontageEnded);
+                    if (TargetDistance <= Attack.PreferredTargetDistance)
+                    {
+                        LungeScale = 0.0f;
+                    }
+                    else
+                    {
+                        const float AssistRange = FMath::Max(Attack.MaxAssistDistance - Attack.PreferredTargetDistance,
+                            1.0f);
 
-	AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveAttackMontage);
+                        LungeScale = FMath::Clamp((TargetDistance - Attack.PreferredTargetDistance) / AssistRange,
+                            0.0f,1.0f);
+                    }
+                }
+            }
+
+            LungeDirection.Z = 0.0f;
+
+            if (LungeDirection.Normalize() && LungeScale > KINDA_SMALL_NUMBER)
+            {
+                Movement->AddImpulse(LungeDirection * Attack.LungeStrength * LungeScale,true);
+            }
+        }
+    }
+
+    const float MontageLength = AnimInstance->Montage_Play(Attack.Montage,SafePlayRate,
+    	EMontagePlayReturnType::MontageLength,0.0f,Attack.bStopAllMontages);
+
+    if (MontageLength <= 0.0f)
+    {
+        ResetPlayerAttackState();
+        return;
+    }
+
+    ActiveAttackMontage = Attack.Montage;
+
+    FOnMontageEnded MontageEndedDelegate;
+    MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleAttackMontageEnded);
+
+    AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveAttackMontage);
 }
 
 const TArray<FAttackConfig>* ADongincheonCharacter::GetActiveHeavyCombo() const

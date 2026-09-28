@@ -36,7 +36,7 @@ struct DONGINCHEONPROTOTYPE_API FDIAttackTaskInstanceData
 	* Attack 진입 직전 최종 검증값.
 	*/
 	UPROPERTY(EditAnywhere, Category = "Attack", meta = (ClampMin = "0.0"))
-	float MaxAttackDistance = 200.0f;
+	float MaxAttackDistance = 240.0f;
 
 	/*
 	 * 콤보 타격과 타격 사이에서 플레이어를 향해

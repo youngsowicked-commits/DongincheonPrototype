@@ -109,6 +109,124 @@ AActor* UTargetingComponent::GetLockOnTarget() const
 	return CurrentTarget.Get();
 }
 
+AActor* UTargetingComponent::FindBestAttackAssistTarget(float MaxDistance, float MinForwardDot) const
+{
+    if (!IsValid(OwnerCharacter) || MaxDistance <= 0.0f)
+    {
+        return nullptr;
+    }
+
+    FVector OwnerForward = OwnerCharacter->GetActorForwardVector();
+    OwnerForward.Z = 0.0f;
+
+    if (!OwnerForward.Normalize())
+    {
+        return nullptr;
+    }
+
+    auto IsSuitableTarget = [&](AActor* Candidate) -> bool
+    {
+        if (!IsValidLockOnTarget(Candidate) || Candidate == OwnerCharacter)
+        {
+            return false;
+        }
+
+        FVector ToTarget = Candidate->GetActorLocation() - OwnerCharacter->GetActorLocation();
+        ToTarget.Z = 0.0f;
+
+        const float Distance = ToTarget.Size();
+
+        if (Distance <= KINDA_SMALL_NUMBER || Distance > MaxDistance)
+        {
+            return false;
+        }
+
+        ToTarget /= Distance;
+
+        const float ForwardDot = FVector::DotProduct(OwnerForward, ToTarget);
+
+        return ForwardDot >= MinForwardDot;
+    };
+
+    AActor* LockedTarget = CurrentTarget.Get();
+
+    if (IsSuitableTarget(LockedTarget))
+    {
+        return LockedTarget;
+    }
+
+    UWorld* World = GetWorld();
+
+    if (!IsValid(World))
+    {
+        return nullptr;
+    }
+
+    FCollisionObjectQueryParams ObjectQueryParams;
+    ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
+
+    FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(AttackAssistTargetQuery), false, OwnerCharacter);
+
+    TArray<FOverlapResult> Overlaps;
+
+    if (!World->OverlapMultiByObjectType(
+        Overlaps,
+        OwnerCharacter->GetActorLocation(),
+        FQuat::Identity,
+        ObjectQueryParams,
+        FCollisionShape::MakeSphere(MaxDistance),
+        QueryParams))
+    {
+        return nullptr;
+    }
+
+    AActor* BestTarget = nullptr;
+    float BestScore = BIG_NUMBER;
+
+    TSet<AActor*> ProcessedActors;
+
+    for (const FOverlapResult& Overlap : Overlaps)
+    {
+        AActor* Candidate = Overlap.GetActor();
+
+        if (!IsValid(Candidate) || ProcessedActors.Contains(Candidate))
+        {
+            continue;
+        }
+
+        ProcessedActors.Add(Candidate);
+
+        if (!IsSuitableTarget(Candidate))
+        {
+            continue;
+        }
+
+        FVector ToTarget = Candidate->GetActorLocation() - OwnerCharacter->GetActorLocation();
+        ToTarget.Z = 0.0f;
+
+        const float Distance = ToTarget.Size();
+
+        if (!ToTarget.Normalize())
+        {
+            continue;
+        }
+
+        const float ForwardDot = FVector::DotProduct(OwnerForward, ToTarget);
+
+        const float DistanceScore = Distance / MaxDistance;
+        const float AngleScore = 1.0f - ForwardDot;
+        const float Score = DistanceScore + AngleScore;
+
+        if (Score < BestScore)
+        {
+            BestScore = Score;
+            BestTarget = Candidate;
+        }
+    }
+
+    return BestTarget;
+}
+
 void UTargetingComponent::SwitchTarget(float Direction)
 {
     if (!IsValid(OwnerCharacter))

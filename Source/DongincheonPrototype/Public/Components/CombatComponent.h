@@ -35,7 +35,7 @@ public:
 	// Attack Lifecycle
 
 	UFUNCTION(BlueprintCallable, Category = "Combat|Attack")
-	void BeginAttack(float DamageAmount, float KnockbackStrength, bool bBreakGuard = false);
+	void BeginAttack(float DamageAmount,float KnockbackStrength,bool bBreakGuard = false,float HitTraceRadius = 0.0f);
 	
 	UFUNCTION(BlueprintCallable, Category = "Combat|Attack")
 	void EndAttack();
@@ -165,6 +165,9 @@ private:
 	
 	UPROPERTY(Transient)
 	float ActiveKnockbackStrength = 0.0f;
+	
+	UPROPERTY(Transient)
+	float ActiveHitTraceRadius = 0.0f;
 	
 	UPROPERTY(Transient)
 	bool bActiveAttackBreakGuard = false;
