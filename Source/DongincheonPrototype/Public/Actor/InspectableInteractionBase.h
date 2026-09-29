@@ -7,13 +7,15 @@
 
 class USceneComponent;
 class UBoxComponent;
+class UCameraComponent;
 class ADongincheonCharacter;
 
 UENUM(BlueprintType)
 enum class EInspectableInteractionState : uint8
 {
 	Idle,
-	Active
+	Active,
+	Returning
 };
 
 UCLASS()
@@ -31,6 +33,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction|Inspectable")
 	void EndInspection();
+	
+	void FinishInspectionReturn();
 
 	UFUNCTION(BlueprintPure, Category = "Interaction|Inspectable")
 	bool IsInspectionActive() const
@@ -64,7 +68,22 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction|Inspectable",
 		meta = (MultiLine = "true"))
 	FText InspectMessage;
+	
+	// Interaction Camera
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction|Camera")
+	TObjectPtr<UCameraComponent> InteractionCamera;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction|Camera")
+	bool bUseInteractionCamera = false;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction|Camera",
+		meta = (ClampMin = "0.0"))
+	float CameraBlendTime = 0.3f;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> PreviousViewTarget;
+
+	//Runtime
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Interaction|Runtime")
 	EInspectableInteractionState InteractionState = EInspectableInteractionState::Idle;
 

@@ -27,6 +27,66 @@ struct DONGINCHEONPROTOTYPE_API FDIAttackPattern
 	float Weight = 1.0f;
 };
 
+USTRUCT(BlueprintType)
+struct DONGINCHEONPROTOTYPE_API FDIStandoffConfig
+{
+    GENERATED_BODY()
+
+    // Spacing
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spacing", meta = (ClampMin = "0.0"))
+    float MinStandoffDistance = 220.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spacing", meta = (ClampMin = "0.0"))
+    float DesiredStandoffDistance = 250.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spacing", meta = (ClampMin = "0.0"))
+    float MinHoverDistance = 180.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spacing", meta = (ClampMin = "0.0"))
+    float MaxHoverDistance = 320.0f;
+
+
+    // Timing
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Timing", meta = (ClampMin = "0.0"))
+    float MinHoldDuration = 1.8f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Timing", meta = (ClampMin = "0.0"))
+    float MaxHoldDuration = 2.8f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Timing", meta = (ClampMin = "0.1"))
+    float MinHoverActionDuration = 0.45f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Timing", meta = (ClampMin = "0.1"))
+    float MaxHoverActionDuration = 0.95f;
+
+
+    // Movement
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement", meta = (ClampMin = "0.0"))
+    float StandoffWalkSpeed = 140.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+    float BackpedalInputScale = 0.65f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+    float HoverInputScale = 0.65f;
+	
+	// Intent Weights
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Intent Weights", meta = (ClampMin = "0.0"))
+	float HoldWeight = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Intent Weights", meta = (ClampMin = "0.0"))
+	float StrafeLeftWeight = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Intent Weights", meta = (ClampMin = "0.0"))
+	float StrafeRightWeight = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Intent Weights", meta = (ClampMin = "0.0"))
+	float StepInWeight = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Intent Weights", meta = (ClampMin = "0.0"))
+	float StepOutWeight = 1.0f;
+};
+
 UCLASS(BlueprintType)
 class DONGINCHEONPROTOTYPE_API UDIEnemyDefinition : public UDataAsset
 {
@@ -43,6 +103,9 @@ public:
 	// 비어 있으면 기존 AttackPatterns를 그대로 사용한다.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Animation|Attack")
 	TArray<FDIAttackPattern> Phase2AttackPatterns;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AI|Standoff")
+	FDIStandoffConfig Standoff;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Hit React")
 	FHitReactConfig HitReact;

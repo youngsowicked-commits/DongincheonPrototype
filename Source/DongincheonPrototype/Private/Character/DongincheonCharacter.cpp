@@ -12,6 +12,7 @@
 #include "Components/HealthComponent.h"
 #include "Components/DIGrabComponent.h"
 #include "Components/DIHeatActionComponent.h"
+#include "Components/DICharacterAudioComponent.h"
 #include "Gameplay/Data/DIHeatActionDefinition.h"
 #include "NativeGameplayTags.h"
 #include "Components/InteractionComponent.h"
@@ -30,13 +31,15 @@ UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_DI_HeatAction_Context_GrabHolding,"HeatAction.
 // Sets default values
 ADongincheonCharacter::ADongincheonCharacter()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 	
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
 	CombatComponent = CreateDefaultSubobject<UCombatComponent>(TEXT("Combat"));
 	GrabComponent = CreateDefaultSubobject<UDIGrabComponent>(TEXT("GrabComponent"));
 	HeatActionComponent = CreateDefaultSubobject<UDIHeatActionComponent>(TEXT("HeatActionComponent"));
 	TargetingComponent = CreateDefaultSubobject<UTargetingComponent>(TEXT("Targeting"));
+	InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
+	CharacterAudioComponent = CreateDefaultSubobject<UDICharacterAudioComponent>(TEXT("CharacterAudioComponent"));
 }
 
 //BeginPlay
@@ -66,6 +69,13 @@ void ADongincheonCharacter::BeginPlay()
 		GrabComponent->OnGrabAttackReceived.AddDynamic(this,&ADongincheonCharacter::HandleGrabAttackReceived);
 		GrabComponent->OnGrabAttackHitConfirmed.AddDynamic(this,&ADongincheonCharacter::HandleGrabAttackHitConfirmed);
 	}
+}
+
+void ADongincheonCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	UpdateAttackAssistMove(DeltaTime);
 }
 
 //Input
@@ -837,73 +847,16 @@ void ADongincheonCharacter::StartPlayerAttack(const FAttackConfig& Attack)
 	{
 		AssistTarget = TargetingComponent->FindBestAttackAssistTarget(Attack.MaxAssistDistance,Attack.MinAssistForwardDot);
 	}
+	
+	CombatComponent->BeginAttack(Attack.Damage,Attack.KnockbackStrength,Attack.bBreaksGuard,Attack.HitTraceRadius,
+	Attack.ImpactFreezeDuration);
 
-    // Attack Facing Assist
-	if (Attack.bUseAttackAssist && IsValid(AssistTarget) && Attack.MaxFacingAssistAngle > 0.0f)
-    {
-        FVector ToTarget = AssistTarget->GetActorLocation() - GetActorLocation();
-        ToTarget.Z = 0.0f;
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->StopMovementImmediately();
+	}
 
-        if (ToTarget.Normalize())
-        {
-            const float CurrentYaw = GetActorRotation().Yaw;
-            const float TargetYaw = ToTarget.Rotation().Yaw;
-
-            const float DeltaYaw = FMath::FindDeltaAngleDegrees(CurrentYaw, TargetYaw);
-            const float AssistedDeltaYaw = FMath::Clamp(
-                DeltaYaw,
-                -Attack.MaxFacingAssistAngle,
-                Attack.MaxFacingAssistAngle);
-
-            SetActorRotation(FRotator(0.0f,CurrentYaw + AssistedDeltaYaw,0.0f));
-        }
-    }
-
-    CombatComponent->BeginAttack(Attack.Damage,Attack.KnockbackStrength,Attack.bBreaksGuard,Attack.HitTraceRadius);
-
-    if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-    {
-        Movement->StopMovementImmediately();
-
-        if (Attack.LungeStrength > 0.0f)
-        {
-            FVector LungeDirection = GetActorForwardVector();
-            float LungeScale = 1.0f;
-
-            if (IsValid(AssistTarget))
-            {
-                FVector ToTarget = AssistTarget->GetActorLocation() - GetActorLocation();
-                ToTarget.Z = 0.0f;
-
-                const float TargetDistance = ToTarget.Size();
-
-                if (ToTarget.Normalize())
-                {
-                    LungeDirection = ToTarget;
-
-                    if (TargetDistance <= Attack.PreferredTargetDistance)
-                    {
-                        LungeScale = 0.0f;
-                    }
-                    else
-                    {
-                        const float AssistRange = FMath::Max(Attack.MaxAssistDistance - Attack.PreferredTargetDistance,
-                            1.0f);
-
-                        LungeScale = FMath::Clamp((TargetDistance - Attack.PreferredTargetDistance) / AssistRange,
-                            0.0f,1.0f);
-                    }
-                }
-            }
-
-            LungeDirection.Z = 0.0f;
-
-            if (LungeDirection.Normalize() && LungeScale > KINDA_SMALL_NUMBER)
-            {
-                Movement->AddImpulse(LungeDirection * Attack.LungeStrength * LungeScale,true);
-            }
-        }
-    }
+	StartAttackAssistMove(AssistTarget,Attack);
 
     const float MontageLength = AnimInstance->Montage_Play(Attack.Montage,SafePlayRate,
     	EMontagePlayReturnType::MontageLength,0.0f,Attack.bStopAllMontages);
@@ -920,6 +873,306 @@ void ADongincheonCharacter::StartPlayerAttack(const FAttackConfig& Attack)
     MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleAttackMontageEnded);
 
     AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate,ActiveAttackMontage);
+}
+
+void ADongincheonCharacter::StartAttackAssistMove(AActor* Target,const FAttackConfig& Attack)
+{
+    StopAttackAssistMove();
+	
+	AttackFacingStartYaw = GetActorRotation().Yaw;
+
+	AttackFacingMaxAngle = FMath::Max(Attack.MaxFacingAssistAngle,0.0f);
+
+    FVector MoveDirection = GetActorForwardVector();
+
+    MoveDirection.Z = 0.0f;
+
+    if (!MoveDirection.Normalize())
+    {
+        return;
+    }
+
+    // 1. Target이 없어도 공격 자체가 가지는 기본 전진
+    AttackMoveFallbackDirection = MoveDirection;
+
+    AttackMoveBaseRemainingDistance = FMath::Max(Attack.BaseAdvanceDistance,0.0f);
+
+    AttackAssistPreferredDistance = FMath::Max(Attack.PreferredTargetDistance,0.0f);
+
+    AttackAssistMaxDistance = FMath::Max(Attack.MaxAssistDistance,0.0f);
+
+    float InitialAssistDistance = 0.0f;
+
+    // 2. Target이 Assist Range 안에 있으면
+    //    Target Magnetism 활성화
+    if (Attack.bUseAttackAssist && IsValid(Target) && AttackAssistPreferredDistance > 0.0f && AttackAssistMaxDistance >
+            AttackAssistPreferredDistance)
+    {
+        FVector ToTarget = Target->GetActorLocation() - GetActorLocation();
+
+        ToTarget.Z = 0.0f;
+
+        const float TargetDistance = ToTarget.Size();
+
+        if (TargetDistance <= AttackAssistMaxDistance && ToTarget.Normalize())
+        {
+            AttackAssistMoveTarget = Target;
+
+            AttackMoveFallbackDirection = ToTarget;
+
+            InitialAssistDistance = FMath::Max(TargetDistance - AttackAssistPreferredDistance,0.0f);
+        }
+    }
+
+    // 3. 실제 필요한 이동거리
+    // Base Advance와
+    // Target까지 필요한 거리 중 큰 값 사용
+    const float InitialMoveDistance = FMath::Max(AttackMoveBaseRemainingDistance,InitialAssistDistance);
+
+    if (InitialMoveDistance <= KINDA_SMALL_NUMBER)
+    {
+        StopAttackAssistMove();
+        return;
+    }
+
+    AttackMoveInitialDistance = InitialMoveDistance;
+
+    // 4. Duration은 이동 종료시간이 아님
+    //    접근 속도를 계산하는 기준값일 뿐
+    const float SafeDuration = FMath::Max(Attack.AttackAssistDuration,0.01f);
+
+    AttackMoveBaseSpeed = FMath::Min(InitialMoveDistance / SafeDuration,AttackAssistMaxSpeed);
+	
+	bAttackMoveWindowRequired = Attack.bUseAttackMoveWindow;
+
+	bAttackMoveWindowOpen = !bAttackMoveWindowRequired;
+
+    if (AttackMoveBaseSpeed <= KINDA_SMALL_NUMBER)
+    {
+        StopAttackAssistMove();
+    }
+}
+
+void ADongincheonCharacter::UpdateAttackAssistMove(float DeltaTime)
+{
+    if (AttackMoveBaseSpeed <= 0.0f)
+    {
+        StopAttackAssistMove();
+        return;
+    }
+
+    // Move Window 공격이면 Notify가 Window를 열기 전에는
+    // Runtime Data만 유지하고 실제 이동은 하지 않는다.
+    if (bAttackMoveWindowRequired && !bAttackMoveWindowOpen)
+    {
+        return;
+    }
+
+    if (bAttackMoveWindowRequired && AttackMoveWindowTimeRemaining <= KINDA_SMALL_NUMBER)
+    {
+        bAttackMoveWindowOpen = false;
+        return;
+    }
+
+    // Target을 잃으면 마지막 유효 방향,
+    // Target 자체가 없었던 공격이면 공격 시작 Forward.
+    FVector MoveDirection = AttackMoveFallbackDirection;
+
+    float AssistRemainingDistance = 0.0f;
+
+    AActor* Target = AttackAssistMoveTarget.Get();
+
+    // Target Magnetism
+    if (IsValid(Target))
+    {
+        FVector ToTarget = Target->GetActorLocation() - GetActorLocation();
+
+        ToTarget.Z = 0.0f;
+
+        const float TargetDistance = ToTarget.Size();
+
+        if (TargetDistance <= AttackAssistMaxDistance && ToTarget.Normalize())
+        {
+            MoveDirection = ToTarget;
+
+            AttackMoveFallbackDirection = ToTarget;
+
+            AssistRemainingDistance = FMath::Max(TargetDistance - AttackAssistPreferredDistance,0.0f);
+        }
+        else
+        {
+            // Target 추적만 종료.
+            // 공격 자체 Base Advance는 계속 가능.
+            AttackAssistMoveTarget.Reset();
+            Target = nullptr;
+        }
+    }
+
+    // --------------------------------------------------
+    // 실제 남은 이동거리
+    //
+    // Target이 있으면 Preferred까지 필요한 거리,
+    // Target이 없어도 BaseAdvance는 보장.
+    // --------------------------------------------------
+
+    const float RemainingDistance = FMath::Max(AttackMoveBaseRemainingDistance,AssistRemainingDistance);
+
+    if (RemainingDistance <= KINDA_SMALL_NUMBER)
+    {
+        StopAttackAssistMove();
+        return;
+    }
+
+    if (!MoveDirection.Normalize())
+    {
+        StopAttackAssistMove();
+        return;
+    }
+
+    // --------------------------------------------------
+    // Facing Follow
+    //
+    // Target이 살아있을 때만 타겟 방향으로 회전.
+    // 공격 시작 방향 기준 MaxFacingAssistAngle을 넘지 않는다.
+    // --------------------------------------------------
+
+    if (IsValid(Target) && AttackFacingMaxAngle > 0.0f && AttackFacingFollowSpeed > 0.0f)
+    {
+        const float DesiredYaw = MoveDirection.Rotation().Yaw;
+
+        const float DeltaFromAttackStart = FMath::FindDeltaAngleDegrees(AttackFacingStartYaw,DesiredYaw);
+
+        const float ClampedDelta = FMath::Clamp(DeltaFromAttackStart,-AttackFacingMaxAngle,AttackFacingMaxAngle);
+
+        const float AllowedTargetYaw = FRotator::NormalizeAxis(AttackFacingStartYaw +ClampedDelta);
+
+        FRotator CurrentRotation = GetActorRotation();
+
+        CurrentRotation.Pitch = 0.0f;
+        CurrentRotation.Roll = 0.0f;
+
+        CurrentRotation.Yaw = FMath::FixedTurn(CurrentRotation.Yaw,AllowedTargetYaw,AttackFacingFollowSpeed *DeltaTime);
+
+        SetActorRotation(CurrentRotation);
+    }
+
+    // --------------------------------------------------
+    // Move Speed
+    //
+    // Legacy / Window 미사용 공격:
+    // 기존 AttackMoveBaseSpeed 사용.
+    //
+    // Move Window 공격:
+    // 남은 거리 / 남은 Window 시간으로 매 Tick 재계산.
+    // --------------------------------------------------
+
+    float CurrentMoveSpeed = AttackMoveBaseSpeed;
+
+    if (bAttackMoveWindowRequired)
+    {
+        const float SafeRemainingTime = FMath::Max(AttackMoveWindowTimeRemaining,DeltaTime);
+
+        const float RequiredMoveSpeed = RemainingDistance / SafeRemainingTime;
+
+        CurrentMoveSpeed = FMath::Min(RequiredMoveSpeed,AttackAssistMaxSpeed);
+    }
+
+    const float MoveDistance = FMath::Min(CurrentMoveSpeed * DeltaTime,RemainingDistance);
+
+    if (MoveDistance <= KINDA_SMALL_NUMBER)
+    {
+        StopAttackAssistMove();
+        return;
+    }
+
+    UCharacterMovementComponent* Movement = GetCharacterMovement();
+
+    if (!IsValid(Movement))
+    {
+        StopAttackAssistMove();
+        return;
+    }
+
+    const FVector BeforeMoveLocation = GetActorLocation();
+
+    FHitResult Hit;
+
+    Movement->SafeMoveUpdatedComponent(MoveDirection * MoveDistance,GetActorQuat(),true,Hit);
+
+    const float ActualMovedDistance = FVector::Dist2D(BeforeMoveLocation,GetActorLocation());
+
+    // Base Advance 예산 감소
+    AttackMoveBaseRemainingDistance = FMath::Max(AttackMoveBaseRemainingDistance -ActualMovedDistance,0.0f);
+
+    // Move Window 남은 시간 감소
+    if (bAttackMoveWindowRequired)
+    {
+        AttackMoveWindowTimeRemaining = FMath::Max(AttackMoveWindowTimeRemaining -DeltaTime,0.0f);
+
+        if (AttackMoveWindowTimeRemaining <= KINDA_SMALL_NUMBER)
+        {
+            bAttackMoveWindowOpen = false;
+        }
+    }
+
+    // 벽 / Capsule 등에 실제로 막힘
+    if (Hit.bBlockingHit)
+    {
+        StopAttackAssistMove();
+        return;
+    }
+
+    // 비정상 stuck 방지
+    if (ActualMovedDistance <= KINDA_SMALL_NUMBER)
+    {
+        StopAttackAssistMove();
+    }
+}
+
+void ADongincheonCharacter::StopAttackAssistMove()
+{
+	AttackAssistMoveTarget.Reset();
+
+	AttackMoveFallbackDirection = FVector::ZeroVector;
+
+	AttackAssistPreferredDistance = 0.0f;
+	AttackAssistMaxDistance = 0.0f;
+
+	AttackMoveBaseRemainingDistance = 0.0f;
+	AttackMoveInitialDistance = 0.0f;
+	AttackMoveBaseSpeed = 0.0f;
+
+	AttackMoveWindowTimeRemaining = 0.0f;
+
+	AttackFacingStartYaw = 0.0f;
+	AttackFacingMaxAngle = 0.0f;
+
+	bAttackMoveWindowRequired = false;
+	bAttackMoveWindowOpen = false;
+}
+
+void ADongincheonCharacter::BeginAttackMoveWindow(float MoveWindowDuration)
+{
+	if (!bPlayerAttackActive || !bAttackMoveWindowRequired || AttackMoveBaseSpeed <= 0.0f || MoveWindowDuration <= 0.0f)
+	{
+		return;
+	}
+
+	AttackMoveWindowTimeRemaining = MoveWindowDuration;
+
+	bAttackMoveWindowOpen = true;
+}
+
+void ADongincheonCharacter::EndAttackMoveWindow()
+{
+	if (!bAttackMoveWindowRequired)
+	{
+		return;
+	}
+
+	bAttackMoveWindowOpen = false;
+
+	AttackMoveWindowTimeRemaining = 0.0f;
 }
 
 const TArray<FAttackConfig>* ADongincheonCharacter::GetActiveHeavyCombo() const
@@ -947,6 +1200,8 @@ void ADongincheonCharacter::HandleAttackMontageEnded(UAnimMontage* Montage, bool
     }
 
     ActiveAttackMontage = nullptr;
+	
+	StopAttackAssistMove();
 
     ClearHitStop();
 
@@ -1033,6 +1288,8 @@ void ADongincheonCharacter::CancelPlayerAttack(float BlendOutTime)
 	
 	ActiveAttackMontage = nullptr;
 	
+	StopAttackAssistMove();
+	
 	ClearHitStop();
 	
 	if (IsValid(CombatComponent))
@@ -1067,6 +1324,8 @@ void ADongincheonCharacter::CancelPlayerAttack(float BlendOutTime)
 void ADongincheonCharacter::ResetPlayerAttackState()
 {
 	ActiveAttackMontage = nullptr;
+	
+	StopAttackAssistMove();
 	
 	ClearHitStop();
 	
@@ -2672,15 +2931,16 @@ float ADongincheonCharacter::TakeDamage(float DamageAmount, struct FDamageEvent 
 
 
 //Hit Confirm Feedback
-void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor, FVector HitLocation, FName HitSocketName,
-	float AppliedDamage)
+void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor, FVector HitLocation, FName HitSocketName, float AppliedDamage)
 {
-	if (AppliedDamage <= 0.0f)
-	{
-		return;
-	}
-	
-	if (IsValid(HitActor))
+	UCombatComponent* HitCombat = IsValid(HitActor) ? HitActor->FindComponentByClass<UCombatComponent>() : nullptr;
+	const bool bGuardContact = IsValid(HitCombat) && (HitCombat->IsGuarding() || HitCombat->IsGuardBroken());
+
+	if (AppliedDamage <= 0.0f && !bGuardContact) return;
+
+	StopAttackAssistMove();
+
+	if (AppliedDamage > 0.0f && IsValid(HitActor))
 	{
 		if (ADIPlayerController* DIPlayerController = Cast<ADIPlayerController>(GetController()))
 		{
@@ -2688,29 +2948,24 @@ void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor, FVector H
 		}
 	}
 
-	if (IsValid(HeatActionComponent))
+	if (AppliedDamage > 0.0f && IsValid(HeatActionComponent))
 	{
 		HeatActionComponent->AddHeat(HeatGainPerHit);
 	}
-	
-	//동일 타격에서 여러 Actor가 잡혀도 HitStop이 중복 시작되지 않게 한다.
-	if (bHitStopActive)
-	{
-		return;
-	}
-	
+
+	if (bHitStopActive) return;
+
 	if (HitCameraShakeClass)
 	{
 		if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
 		{
 			if (APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager)
 			{
-				CameraManager->StartCameraShake(HitCameraShakeClass,HitCameraShakeScale,ECameraShakePlaySpace::CameraLocal,
-					FRotator::ZeroRotator);
+				CameraManager->StartCameraShake(HitCameraShakeClass, HitCameraShakeScale, ECameraShakePlaySpace::CameraLocal, FRotator::ZeroRotator);
 			}
 		}
 	}
-	
+
 	StartHitStop();
 }
 

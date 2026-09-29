@@ -8,6 +8,9 @@
 
 class AActor;
 class UDamageType;
+class USkeletalMeshComponent;
+class UAnimInstance;
+class UAnimMontage;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams
 (FOnCombatHitConfirmed, AActor*, HitActor, FVector, HitLocation, FName, HitSocketName,float,AppliedDamage);
@@ -35,7 +38,8 @@ public:
 	// Attack Lifecycle
 
 	UFUNCTION(BlueprintCallable, Category = "Combat|Attack")
-	void BeginAttack(float DamageAmount,float KnockbackStrength,bool bBreakGuard = false,float HitTraceRadius = 0.0f);
+	void BeginAttack(float DamageAmount,float KnockbackStrength,bool bBreakGuard = false,float HitTraceRadius = 0.0f,
+	float ImpactFreezeDuration = 0.045f);
 	
 	UFUNCTION(BlueprintCallable, Category = "Combat|Attack")
 	void EndAttack();
@@ -101,6 +105,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Combat|Hit Detection")
 	bool ProcessSocketHit(FName SocketName);
 	
+	bool ProcessSocketTrajectoryHit(FName SocketName,const FVector& TraceStart,const FVector& TraceEnd);
+	
 	/*
 	 * 현재 Attack에서 이미 맞은 Actor 기록을 초기화
 	 * BeginAttack()에서도 자동 Reset
@@ -108,6 +114,8 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Combat|Hit Detection")
 	void ResetAttackHitActors();
+	
+	bool ProcessHitActor(AActor* HitActor,const FVector& HitLocation,FName SocketName);
 	
 	//기존 Damage API
 	UFUNCTION(BlueprintCallable, Category = "Combat|Damage")
@@ -131,6 +139,16 @@ private:
 	bool IsValidCombatTarget(AActor* Target) const;
 	
 	void ApplyKnockback(AActor* Target, float KnockbackStrength) const;
+	
+	void StartImpactFreeze(AActor* HitActor, float KnockbackStrength);
+	
+	void FinishImpactFreeze();
+	
+	void PauseCurrentImpactMontage(AActor* Actor);
+	
+	void TryPausePendingImpactVictims();
+	
+	bool IsVictimHitReactReady(AActor* Victim) const;
 	
 	// Guard Settings
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Guard", meta = (AllowPrivateAccess = "true",
@@ -170,7 +188,35 @@ private:
 	float ActiveHitTraceRadius = 0.0f;
 	
 	UPROPERTY(Transient)
+	float ActiveImpactFreezeDuration = 0.045f;
+	
+	UPROPERTY(Transient)
 	bool bActiveAttackBreakGuard = false;
 	
 	TSet<TWeakObjectPtr<AActor>> HitActorThisAttack;
+
+	struct FPendingImpactKnockback
+	{
+		TWeakObjectPtr<AActor> Target;
+		float Strength = 0.0f;
+	};
+	
+	struct FImpactPausedMontageState
+	{
+		TWeakObjectPtr<UAnimInstance> AnimInstance;
+		TWeakObjectPtr<UAnimMontage> Montage;
+	};
+
+	TArray<FImpactPausedMontageState> PausedImpactMontages;
+	TArray<TWeakObjectPtr<AActor>> PendingImpactVictims;
+
+	bool bImpactVictimPauseRetryScheduled = false;
+
+	bool bImpactFreezeActive = false;
+	
+	TArray<FPendingImpactKnockback> PendingImpactKnockbacks;
+
+	FTimerHandle ImpactFreezeTimerHandle;
+	
+	
 };

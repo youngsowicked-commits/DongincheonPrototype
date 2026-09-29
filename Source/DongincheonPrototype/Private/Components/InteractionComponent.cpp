@@ -102,13 +102,6 @@ bool UInteractionComponent::CancelCurrentInteraction()
 		return false;
 	}
 
-	// 대상 쪽에서 먼저 NotifyInteractionEnded를 호출하지 않았다면
-	// Component가 여기서 정리.
-	if (ActiveInteractable.Get() == Target)
-	{
-		NotifyInteractionEnded(Target);
-	}
-
 	return true;
 }
 

@@ -126,24 +126,16 @@ bool ADongincheonEnemyBase::StartGuard()
 		                           ? EnemyDefinition->Guard.GuardPlayRate
 		                           : 1.0f;
 
-	const float MontageResult = AnimInstance->Montage_Play(GuardMontage, SafePlayRate);
+	const float MontageResult = AnimInstance->Montage_Play(GuardMontage,SafePlayRate);
 
 	if (MontageResult <= 0.0f)
 	{
 		return false;
 	}
 
-	CombatComponent->BeginGuard();
+	UE_LOG(LogTemp,Warning,TEXT("[GUARD] Montage Started | Enemy=%s | MontageResult=%.2f"),*GetName(),MontageResult);
 
-	UE_LOG(
-		LogTemp,
-		Warning,
-		TEXT("[GUARD] MontageResult=%.2f IsGuarding=%s"),
-		MontageResult,
-		CombatComponent->IsGuarding() ? TEXT("TRUE") : TEXT("FALSE")
-	);
-
-	return CombatComponent->IsGuarding();
+	return true;
 }
 
 void ADongincheonEnemyBase::StopGuard()

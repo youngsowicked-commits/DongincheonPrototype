@@ -21,6 +21,7 @@ class UDIGrabComponent;
 class UDIHeatActionComponent;
 class UDIHeatActionDefinition;
 class UAnimMontage;
+class UDICharacterAudioComponent;
 class UCameraShakeBase;
 
 struct FInputActionValue;
@@ -101,10 +102,15 @@ public:
 	
 	void FinalizePlayerDeath();
 	
+	void BeginAttackMoveWindow(float MoveWindowDuration);
+	void EndAttackMoveWindow();
+	
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
 protected:
 	virtual void BeginPlay() override;
+	
+	virtual void Tick(float DeltaTime) override;
 	
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	
@@ -209,6 +215,12 @@ protected:
 	
 	void StartPlayerAttack(const FAttackConfig& Attack);
 	
+	void StartAttackAssistMove(AActor* Target, const FAttackConfig& Attack);
+	
+	void UpdateAttackAssistMove(float DeltaTime);
+	
+	void StopAttackAssistMove();
+	
 	const TArray<FAttackConfig>* GetActiveHeavyCombo() const;
 	
 	void HandleAttackMontageEnded(UAnimMontage* Montage,bool bInterrupted);
@@ -260,6 +272,9 @@ protected:
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UInteractionComponent> InteractionComponent;
+	
+	UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category = "Components",meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UDICharacterAudioComponent> CharacterAudioComponent;
 	
 	//Input
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
@@ -338,6 +353,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack")
 	TArray<FAttackConfig> ComboAttacks;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack Assist", meta = (ClampMin = "100.0"))
+	float AttackAssistMaxSpeed = 950.0f;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack Assist", meta = (ClampMin = "0.0"))
+	float AttackFacingFollowSpeed = 720.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack Assist", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	float AttackAssistMinSpeedScale = 0.25f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack Assist", meta = (ClampMin = "0.5", ClampMax = "4.0"))
+	float AttackAssistEaseExponent = 1.5f;
+	
 	// RMB → RMB → RMB...
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack")
 	TArray<FAttackConfig> NeutralHeavyCombo;
@@ -400,6 +427,25 @@ protected:
 	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
 	bool bPlayerAttackActive = false;
+	
+	TWeakObjectPtr<AActor> AttackAssistMoveTarget;
+
+	FVector AttackMoveFallbackDirection = FVector::ZeroVector;
+
+	float AttackAssistPreferredDistance = 0.0f;
+	float AttackAssistMaxDistance = 0.0f;
+
+	float AttackMoveBaseRemainingDistance = 0.0f;
+	float AttackMoveInitialDistance = 0.0f;
+	float AttackMoveBaseSpeed = 0.0f;
+	
+	float AttackMoveWindowTimeRemaining = 0.0f;
+	
+	float AttackFacingStartYaw = 0.0f;
+	float AttackFacingMaxAngle = 0.0f;
+	
+	bool bAttackMoveWindowRequired = false;
+	bool bAttackMoveWindowOpen = false;
 	
 	EPlayerAttackMode ActiveAttackMode = EPlayerAttackMode::None;
 	

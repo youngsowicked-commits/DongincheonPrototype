@@ -12,6 +12,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
 
 // Sets default values for this component's properties
@@ -20,11 +21,13 @@ UCombatComponent::UCombatComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-void UCombatComponent::BeginAttack(float DamageAmount,float KnockbackStrength,bool bBreakGuard,float HitTraceRadius)
+void UCombatComponent::BeginAttack(float DamageAmount,float KnockbackStrength,bool bBreakGuard,float HitTraceRadius,
+	float ImpactFreezeDuration)
 {
 	ActiveDamageAmount = FMath::Max(0.0f, DamageAmount);
 	ActiveKnockbackStrength = FMath::Max(0.0f, KnockbackStrength);
 	ActiveHitTraceRadius = HitTraceRadius > 0.0f ? HitTraceRadius : DefaultHitTraceRadius;
+	ActiveImpactFreezeDuration = FMath::Max(0.0f, ImpactFreezeDuration);
 	bActiveAttackBreakGuard = bBreakGuard;
 
 	HitActorThisAttack.Reset();
@@ -39,6 +42,7 @@ void UCombatComponent::EndAttack()
 	ActiveDamageAmount = 0.0f;
 	ActiveKnockbackStrength = 0.0f;
 	ActiveHitTraceRadius = 0.0f;
+	ActiveImpactFreezeDuration = 0.0f;
 	bActiveAttackBreakGuard = false;
 	
 	HitActorThisAttack.Reset();
@@ -336,10 +340,296 @@ void UCombatComponent::ApplyKnockback(AActor* Target, float KnockbackStrength) c
 	Movement->AddImpulse(KnockbackDirection * KnockbackStrength, true);
 }
 
+void UCombatComponent::PauseCurrentImpactMontage(AActor* Actor)
+{
+	ACharacter* Character = Cast<ACharacter>(Actor);
+
+	if (!IsValid(Character) || !IsValid(Character->GetMesh()))
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = Character->GetMesh()->GetAnimInstance();
+
+	if (!IsValid(AnimInstance))
+	{
+		return;
+	}
+
+	UAnimMontage* Montage = AnimInstance->GetCurrentActiveMontage();
+
+	if (!IsValid(Montage))
+	{
+		return;
+	}
+
+	for (const FImpactPausedMontageState& PausedState : PausedImpactMontages)
+	{
+		if (PausedState.AnimInstance.Get() == AnimInstance &&
+			PausedState.Montage.Get() == Montage)
+		{
+			return;
+		}
+	}
+
+	FImpactPausedMontageState NewState;
+	NewState.AnimInstance = AnimInstance;
+	NewState.Montage = Montage;
+
+	PausedImpactMontages.Add(NewState);
+
+	AnimInstance->Montage_Pause(Montage);
+}
+
+bool UCombatComponent::IsVictimHitReactReady(AActor* Victim) const
+{
+	if (!IsValid(Victim))
+	{
+		return false;
+	}
+
+	if (const ADongincheonEnemyBase* Enemy =
+		Cast<ADongincheonEnemyBase>(Victim))
+	{
+		return Enemy->IsHitReactActive();
+	}
+
+	if (const ADongincheonCharacter* Player =
+		Cast<ADongincheonCharacter>(Victim))
+	{
+		return Player->IsPlayerHitReacting();
+	}
+
+	return false;
+}
+
+void UCombatComponent::TryPausePendingImpactVictims()
+{
+	bImpactVictimPauseRetryScheduled = false;
+
+	if (!bImpactFreezeActive)
+	{
+		PendingImpactVictims.Reset();
+		return;
+	}
+
+	for (int32 Index = PendingImpactVictims.Num() - 1; Index >= 0; --Index)
+	{
+		AActor* Victim = PendingImpactVictims[Index].Get();
+
+		if (!IsValid(Victim))
+		{
+			PendingImpactVictims.RemoveAtSwap(Index);
+			continue;
+		}
+
+		if (!IsVictimHitReactReady(Victim))
+		{
+			continue;
+		}
+
+		PauseCurrentImpactMontage(Victim);
+
+		PendingImpactVictims.RemoveAtSwap(Index);
+	}
+
+	if (!PendingImpactVictims.IsEmpty() &&
+		!bImpactVictimPauseRetryScheduled &&
+		IsValid(GetWorld()))
+	{
+		bImpactVictimPauseRetryScheduled = true;
+
+		GetWorld()->GetTimerManager().SetTimerForNextTick(
+			FTimerDelegate::CreateUObject(
+				this,
+				&UCombatComponent::TryPausePendingImpactVictims));
+	}
+}
+
+void UCombatComponent::StartImpactFreeze(
+	AActor* HitActor,
+	float KnockbackStrength)
+{
+	AActor* Attacker = GetOwner();
+
+	if (!IsValid(Attacker) || !IsValid(HitActor))
+	{
+		return;
+	}
+
+	if (ActiveImpactFreezeDuration <= 0.0f)
+	{
+		if (KnockbackStrength > 0.0f)
+		{
+			ApplyKnockback(HitActor, KnockbackStrength);
+		}
+
+		return;
+	}
+
+	// Knockback은 Impact Hold가 끝날 때까지 보류.
+	if (KnockbackStrength > 0.0f)
+	{
+		FPendingImpactKnockback PendingKnockback;
+		PendingKnockback.Target = HitActor;
+		PendingKnockback.Strength = KnockbackStrength;
+
+		PendingImpactKnockbacks.Add(PendingKnockback);
+	}
+
+	const TWeakObjectPtr<AActor> WeakVictim(HitActor);
+
+	if (!PendingImpactVictims.Contains(WeakVictim))
+	{
+		PendingImpactVictims.Add(WeakVictim);
+	}
+
+	if (!bImpactFreezeActive)
+	{
+		bImpactFreezeActive = true;
+
+		// 공격자는 정확한 Contact Frame에서 즉시 Hold.
+		PauseCurrentImpactMontage(Attacker);
+
+		GetWorld()->GetTimerManager().SetTimer(
+			ImpactFreezeTimerHandle,
+			this,
+			&UCombatComponent::FinishImpactFreeze,
+			ActiveImpactFreezeDuration,
+			false);
+	}
+
+	// Player Victim은 이미 HitReact가 시작됐을 수 있고,
+	// Enemy는 StateTree 전환 후 준비될 때까지 다음 Tick에서 재확인.
+	TryPausePendingImpactVictims();
+}
+
+void UCombatComponent::FinishImpactFreeze()
+{
+	bImpactFreezeActive = false;
+	bImpactVictimPauseRetryScheduled = false;
+
+	PendingImpactVictims.Reset();
+
+	for (const FImpactPausedMontageState& PausedState : PausedImpactMontages)
+	{
+		UAnimInstance* AnimInstance = PausedState.AnimInstance.Get();
+		UAnimMontage* Montage = PausedState.Montage.Get();
+
+		if (!IsValid(AnimInstance) || !IsValid(Montage))
+		{
+			continue;
+		}
+
+		AnimInstance->Montage_Resume(Montage);
+	}
+
+	PausedImpactMontages.Reset();
+
+	for (const FPendingImpactKnockback& PendingKnockback :
+		PendingImpactKnockbacks)
+	{
+		AActor* Target = PendingKnockback.Target.Get();
+
+		if (!IsValid(Target) ||
+			PendingKnockback.Strength <= 0.0f)
+		{
+			continue;
+		}
+
+		ApplyKnockback(
+			Target,
+			PendingKnockback.Strength);
+	}
+
+	PendingImpactKnockbacks.Reset();
+}
 
 bool UCombatComponent::PerformSocketHitTrace(FName SocketName, float TraceRadius, TArray<AActor*>& OutHitActors, bool bDrawDebug)
 {
 	return CollectSocketHitActors(SocketName, TraceRadius, OutHitActors, bDrawDebug);
+}
+
+bool UCombatComponent::ProcessHitActor(
+	AActor* HitActor,
+	const FVector& HitLocation,
+	FName SocketName)
+{
+	if (!IsValid(HitActor))
+	{
+		return false;
+	}
+
+	ACharacter* OwnerCharacter =
+		Cast<ACharacter>(GetOwner());
+
+	if (!IsValid(OwnerCharacter))
+	{
+		return false;
+	}
+
+	if (HitActor == OwnerCharacter)
+	{
+		return false;
+	}
+
+	if (!IsValidCombatTarget(HitActor))
+	{
+		return false;
+	}
+
+	const bool bOwnerIsPlayer =
+		OwnerCharacter->IsA<ADongincheonCharacter>();
+
+	const bool bOwnerIsEnemy =
+		OwnerCharacter->IsA<ADongincheonEnemyBase>();
+
+	const bool bTargetIsPlayer =
+		HitActor->IsA<ADongincheonCharacter>();
+
+	const bool bTargetIsEnemy =
+		HitActor->IsA<ADongincheonEnemyBase>();
+
+	const bool bValidCombatTarget =
+		(bOwnerIsPlayer && bTargetIsEnemy) ||
+		(bOwnerIsEnemy && bTargetIsPlayer);
+
+	if (!bValidCombatTarget)
+	{
+		return false;
+	}
+
+	const TWeakObjectPtr<AActor> HitActorPtr(HitActor);
+
+	if (HitActorThisAttack.Contains(HitActorPtr))
+	{
+		return false;
+	}
+
+	HitActorThisAttack.Add(HitActorPtr);
+
+	float AppliedDamage = 0.0f;
+
+	if (ActiveDamageAmount > 0.0f)
+	{
+		AppliedDamage =
+			DealDamage(HitActor, ActiveDamageAmount);
+	}
+
+	if (AppliedDamage > 0.0f)
+	{
+		StartImpactFreeze(
+			HitActor,
+			ActiveKnockbackStrength);
+	}
+
+	OnHitConfirmed.Broadcast(
+		HitActor,
+		HitLocation,
+		SocketName,
+		AppliedDamage);
+
+	return true;
 }
 
 bool UCombatComponent::ProcessSocketHit(FName SocketName)
@@ -378,55 +668,131 @@ bool UCombatComponent::ProcessSocketHit(FName SocketName)
 
 	for (AActor* HitActor : HitActors)
 	{
-		if (!IsValid(HitActor))
+		if (ProcessHitActor(
+			HitActor,
+			HitLocation,
+			SocketName))
 		{
-			continue;
+			bAnyNewHit = true;
 		}
-		
-		// 자기 자신 타격 방지
-		if (HitActor == OwnerCharacter)
-		{
-			continue;
-		}
-		
-		const bool bOwnerIsPlayer = OwnerCharacter->IsA<ADongincheonCharacter>();
-		const bool bOwnerIsEnemy = OwnerCharacter->IsA<ADongincheonEnemyBase>();
-		const bool bTargetIsPlayer = HitActor->IsA<ADongincheonCharacter>();
-		const bool bTargetIsEnemy = HitActor->IsA<ADongincheonEnemyBase>();
-		
-		//Player - Enemy끼리만 전투 허용
-		const bool bValidCombatTarget = (bOwnerIsPlayer && bTargetIsEnemy) || (bOwnerIsEnemy && bTargetIsPlayer);
-		
-		if (!bValidCombatTarget)
-		{
-			continue;
-		}
-		
-		const TWeakObjectPtr<AActor> HitActorPtr(HitActor);
-
-		if (HitActorThisAttack.Contains(HitActorPtr))
-		{
-			continue;
-		}
-
-		HitActorThisAttack.Add(HitActorPtr);
-
-		float AppliedDamage = 0.0f;
-
-		if (ActiveDamageAmount > 0.0f)
-		{
-			AppliedDamage = DealDamage(HitActor, ActiveDamageAmount);
-		}
-
-		if (AppliedDamage > 0.0f && ActiveKnockbackStrength > 0.0f)
-		{
-			ApplyKnockback(HitActor, ActiveKnockbackStrength);
-		}
-
-		OnHitConfirmed.Broadcast(HitActor, HitLocation, SocketName, AppliedDamage);
-
-		bAnyNewHit = true;
 	}
 
 	return bAnyNewHit;
+}
+
+bool UCombatComponent::ProcessSocketTrajectoryHit(
+    FName SocketName,
+    const FVector& TraceStart,
+    const FVector& TraceEnd)
+{
+    if (!bAttackActive ||
+        SocketName.IsNone())
+    {
+        return false;
+    }
+
+    ACharacter* OwnerCharacter =
+        Cast<ACharacter>(GetOwner());
+
+    if (!IsValid(OwnerCharacter))
+    {
+        return false;
+    }
+
+    UWorld* World = GetWorld();
+
+    if (!IsValid(World))
+    {
+        return false;
+    }
+
+    const float TraceRadius =
+        ActiveHitTraceRadius > 0.0f
+        ? ActiveHitTraceRadius
+        : DefaultHitTraceRadius;
+
+    if (TraceRadius <= 0.0f)
+    {
+        return false;
+    }
+
+    FCollisionObjectQueryParams ObjectQueryParams;
+    ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
+
+    FCollisionQueryParams QueryParams(
+        SCENE_QUERY_STAT(CombatSocketTrajectoryHit),
+        false,
+        OwnerCharacter);
+
+    const FCollisionShape HitShape =
+        FCollisionShape::MakeSphere(TraceRadius);
+
+    TArray<FHitResult> HitResults;
+
+    World->SweepMultiByObjectType(
+        HitResults,
+        TraceStart,
+        TraceEnd,
+        FQuat::Identity,
+        ObjectQueryParams,
+        HitShape,
+        QueryParams);
+
+    bool bAnyNewHit = false;
+
+    for (const FHitResult& Hit : HitResults)
+    {
+        AActor* HitActor = Hit.GetActor();
+
+        const FVector HitLocation =
+            Hit.ImpactPoint.IsNearlyZero()
+            ? TraceEnd
+            : Hit.ImpactPoint;
+
+        if (ProcessHitActor(
+            HitActor,
+            HitLocation,
+            SocketName))
+        {
+            bAnyNewHit = true;
+        }
+    }
+
+    if (bDrawHitDebug)
+    {
+        const FColor DebugColor =
+            bAnyNewHit
+            ? FColor::Green
+            : FColor::Red;
+
+        DrawDebugLine(
+            World,
+            TraceStart,
+            TraceEnd,
+            DebugColor,
+            false,
+            0.15f,
+            0,
+            2.0f);
+
+        DrawDebugSphere(
+            World,
+            TraceStart,
+            TraceRadius,
+            12,
+            DebugColor,
+            false,
+            0.15f);
+
+        DrawDebugSphere(
+            World,
+            TraceEnd,
+            TraceRadius,
+            12,
+            DebugColor,
+            false,
+            0.15f);
+    }
+
+    return bAnyNewHit;
 }
