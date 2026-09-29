@@ -77,57 +77,43 @@ EGuardResult UCombatComponent::TryBlockDamage(float IncomingDamage, AActor* Dama
 	{
 		return EGuardResult::NotBlocked;
 	}
-	
+
 	AActor* Owner = GetOwner();
-	
-	if (!IsValid(Owner))
-	{
-		return EGuardResult::NotBlocked;
-	}
-	
+	if (!IsValid(Owner)) return EGuardResult::NotBlocked;
+
 	FVector DirectionToAttacker = DamageCauser->GetActorLocation() - Owner->GetActorLocation();
-	
 	DirectionToAttacker.Z = 0.0f;
-	
-	if (!DirectionToAttacker.Normalize())
-	{
-		return  EGuardResult::NotBlocked;
-	}
-	
+
+	if (!DirectionToAttacker.Normalize()) return EGuardResult::NotBlocked;
+
 	FVector OwnerForward = Owner->GetActorForwardVector();
 	OwnerForward.Z = 0.0f;
-	
-	if (!OwnerForward.Normalize())
-	{
-		return EGuardResult::NotBlocked;
-	}
-	
+
+	if (!OwnerForward.Normalize()) return EGuardResult::NotBlocked;
+
 	const float FrontDot = FVector::DotProduct(OwnerForward, DirectionToAttacker);
-	
-	if (FrontDot < GuardFrontDotThreshold)
-	{
-		return EGuardResult::NotBlocked;
-	}
-	
-	bool bIncomingBreakGuard = false;
-	
-	if (const UCombatComponent* AttackerCombat = DamageCauser->FindComponentByClass<UCombatComponent>())
-	{
-		bIncomingBreakGuard = AttackerCombat->DoesActiveAttackBreakGuard();
-	}
-	
+	if (FrontDot < GuardFrontDotThreshold) return EGuardResult::NotBlocked;
+
+	UCombatComponent* AttackerCombat = DamageCauser->FindComponentByClass<UCombatComponent>();
+	const bool bIncomingBreakGuard = IsValid(AttackerCombat) && AttackerCombat->DoesActiveAttackBreakGuard();
+
 	if (bIncomingBreakGuard)
 	{
+		AttackerCombat->SetPendingImpactResult(EDICombatImpactResult::GuardBreak);
+
 		bGuardActive = false;
 		bGuardBroken = true;
-		
-		OnGuardBroken.Broadcast(IncomingDamage,DamageCauser);
-		
+
+		OnGuardBroken.Broadcast(IncomingDamage, DamageCauser);
 		return EGuardResult::GuardBroken;
 	}
-	
-	OnGuardHit.Broadcast(IncomingDamage,DamageCauser);
-	
+
+	if (IsValid(AttackerCombat))
+	{
+		AttackerCombat->SetPendingImpactResult(EDICombatImpactResult::GuardHit);
+	}
+
+	OnGuardHit.Broadcast(IncomingDamage, DamageCauser);
 	return EGuardResult::Blocked;
 }
 

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Gameplay/Data/DICombatTypes.h"
 #include "CombatComponent.generated.h"
 
 class AActor;
@@ -14,6 +15,9 @@ class UAnimMontage;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams
 (FOnCombatHitConfirmed, AActor*, HitActor, FVector, HitLocation, FName, HitSocketName,float,AppliedDamage);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_FiveParams
+(FCombatImpactConfirmedSignature, AActor*, HitActor, FVector, HitLocation, FName, HitSocketName, float, AppliedDamage, EDICombatImpactResult, ImpactResult);
 
 UENUM(BlueprintType)
 enum class EGuardResult : uint8
@@ -125,11 +129,16 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Combat|Events")
 	FOnCombatHitConfirmed OnHitConfirmed;
 	
+	UPROPERTY(BlueprintAssignable, Category = "Combat|Hit")
+	FCombatImpactConfirmedSignature OnImpactConfirmed;
+	
 	UPROPERTY(BlueprintAssignable, Category = "Combat|Events")
 	FOnGuardHit OnGuardHit;
 	
 	UPROPERTY(BlueprintAssignable, Category = "Combat|Events")
 	FOnGuardBroken OnGuardBroken;
+	
+	void SetPendingImpactResult(EDICombatImpactResult InResult) { PendingImpactResult = InResult; }
 
 	
 private:
@@ -217,6 +226,8 @@ private:
 	TArray<FPendingImpactKnockback> PendingImpactKnockbacks;
 
 	FTimerHandle ImpactFreezeTimerHandle;
+	
+	EDICombatImpactResult PendingImpactResult = EDICombatImpactResult::None;
 	
 	
 };
