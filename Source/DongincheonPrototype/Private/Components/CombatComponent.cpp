@@ -22,16 +22,18 @@ UCombatComponent::UCombatComponent()
 }
 
 void UCombatComponent::BeginAttack(float DamageAmount,float KnockbackStrength,bool bBreakGuard,float HitTraceRadius,
-	float ImpactFreezeDuration)
+	float ImpactFreezeDuration,UAnimMontage* AttackMontage)
 {
 	ActiveDamageAmount = FMath::Max(0.0f, DamageAmount);
 	ActiveKnockbackStrength = FMath::Max(0.0f, KnockbackStrength);
 	ActiveHitTraceRadius = HitTraceRadius > 0.0f ? HitTraceRadius : DefaultHitTraceRadius;
 	ActiveImpactFreezeDuration = FMath::Max(0.0f, ImpactFreezeDuration);
+	ActiveImpactMontage = AttackMontage;
 	bActiveAttackBreakGuard = bBreakGuard;
 
 	HitActorThisAttack.Reset();
-
+	PendingImpactResult = EDICombatImpactResult::None;
+	
 	bAttackActive = true;
 }
 
@@ -43,9 +45,11 @@ void UCombatComponent::EndAttack()
 	ActiveKnockbackStrength = 0.0f;
 	ActiveHitTraceRadius = 0.0f;
 	ActiveImpactFreezeDuration = 0.0f;
+	ActiveImpactMontage = nullptr;
 	bActiveAttackBreakGuard = false;
 	
 	HitActorThisAttack.Reset();
+	PendingImpactResult = EDICombatImpactResult::None;
 }
 
 // Guard LifeCycle
@@ -341,8 +345,36 @@ void UCombatComponent::PauseCurrentImpactMontage(AActor* Actor)
 	{
 		return;
 	}
+	
+	if (Actor == GetOwner())
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[IMPACT_ATTACK_MONTAGE] Stored=%s | IsActive=%s | IsPlaying=%s | Current=%s"),
+			*GetNameSafe(ActiveImpactMontage),
+			IsValid(ActiveImpactMontage) && AnimInstance->Montage_IsActive(ActiveImpactMontage) ? TEXT("TRUE") : TEXT("FALSE"),
+			IsValid(ActiveImpactMontage) && AnimInstance->Montage_IsPlaying(ActiveImpactMontage) ? TEXT("TRUE") : TEXT("FALSE"),
+			*GetNameSafe(AnimInstance->GetCurrentActiveMontage()));
+	}
 
-	UAnimMontage* Montage = AnimInstance->GetCurrentActiveMontage();
+	UAnimMontage* Montage = nullptr;
+
+	if (Actor == GetOwner() && IsValid(ActiveImpactMontage) && AnimInstance->Montage_IsActive(ActiveImpactMontage))
+	{
+		Montage = ActiveImpactMontage;
+	}
+	else
+	{
+		Montage = AnimInstance->GetCurrentActiveMontage();
+	}
+	
+	UE_LOG(
+	LogTemp,
+	Warning,
+	TEXT("[IMPACT_FREEZE] PAUSE | Actor=%s | Montage=%s"),
+	*GetNameSafe(Actor),
+	*GetNameSafe(Montage));
 
 	if (!IsValid(Montage))
 	{
@@ -396,6 +428,8 @@ void UCombatComponent::TryPausePendingImpactVictims()
 	if (!bImpactFreezeActive)
 	{
 		PendingImpactVictims.Reset();
+		ReadyImpactVictims.Reset();
+		bImpactVictimReadyPauseScheduled = false;
 		return;
 	}
 
@@ -414,9 +448,32 @@ void UCombatComponent::TryPausePendingImpactVictims()
 			continue;
 		}
 
-		PauseCurrentImpactMontage(Victim);
+		const TWeakObjectPtr<AActor> WeakVictim(Victim);
+
+		if (!ReadyImpactVictims.Contains(WeakVictim))
+		{
+			ReadyImpactVictims.Add(WeakVictim);
+		}
 
 		PendingImpactVictims.RemoveAtSwap(Index);
+
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[IMPACT_FREEZE] VICTIM READY | Victim=%s | WaitNextTick"),
+			*GetNameSafe(Victim));
+	}
+
+	if (!ReadyImpactVictims.IsEmpty() &&
+		!bImpactVictimReadyPauseScheduled &&
+		IsValid(GetWorld()))
+	{
+		bImpactVictimReadyPauseScheduled = true;
+
+		GetWorld()->GetTimerManager().SetTimerForNextTick(
+			FTimerDelegate::CreateUObject(
+				this,
+				&UCombatComponent::PauseReadyImpactVictims));
 	}
 
 	if (!PendingImpactVictims.IsEmpty() &&
@@ -432,20 +489,80 @@ void UCombatComponent::TryPausePendingImpactVictims()
 	}
 }
 
-void UCombatComponent::StartImpactFreeze(
-	AActor* HitActor,
-	float KnockbackStrength)
+void UCombatComponent::PauseReadyImpactVictims()
+{
+	bImpactVictimReadyPauseScheduled = false;
+
+	if (!bImpactFreezeActive)
+	{
+		ReadyImpactVictims.Reset();
+		return;
+	}
+
+	for (const TWeakObjectPtr<AActor>& WeakVictim : ReadyImpactVictims)
+	{
+		AActor* Victim = WeakVictim.Get();
+
+		if (!IsValid(Victim))
+		{
+			continue;
+		}
+
+		if (!IsVictimHitReactReady(Victim))
+		{
+			if (!PendingImpactVictims.Contains(WeakVictim))
+			{
+				PendingImpactVictims.Add(WeakVictim);
+			}
+
+			continue;
+		}
+
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[IMPACT_FREEZE] VICTIM PAUSE NEXT TICK | Victim=%s"),
+			*GetNameSafe(Victim));
+
+		PauseCurrentImpactMontage(Victim);
+	}
+
+	ReadyImpactVictims.Reset();
+
+	if (!PendingImpactVictims.IsEmpty() &&
+		!bImpactVictimPauseRetryScheduled &&
+		IsValid(GetWorld()))
+	{
+		bImpactVictimPauseRetryScheduled = true;
+
+		GetWorld()->GetTimerManager().SetTimerForNextTick(
+			FTimerDelegate::CreateUObject(
+				this,
+				&UCombatComponent::TryPausePendingImpactVictims));
+	}
+}
+
+void UCombatComponent::StartImpactFreeze(AActor* HitActor, float KnockbackStrength, EDICombatImpactResult ImpactResult)
 {
 	AActor* Attacker = GetOwner();
+	
+	UE_LOG(
+	LogTemp,
+	Warning,
+	TEXT("[IMPACT_FREEZE] START | Attacker=%s | Victim=%s | Duration=%.3f | Result=%d"),
+	*GetNameSafe(Attacker),
+	*GetNameSafe(HitActor),
+	ActiveImpactFreezeDuration,
+	static_cast<int32>(ImpactResult));
 
-	if (!IsValid(Attacker) || !IsValid(HitActor))
+	if (!IsValid(Attacker) || !IsValid(HitActor) || ImpactResult == EDICombatImpactResult::None)
 	{
 		return;
 	}
 
 	if (ActiveImpactFreezeDuration <= 0.0f)
 	{
-		if (KnockbackStrength > 0.0f)
+		if (ImpactResult == EDICombatImpactResult::Hit && KnockbackStrength > 0.0f)
 		{
 			ApplyKnockback(HitActor, KnockbackStrength);
 		}
@@ -453,8 +570,7 @@ void UCombatComponent::StartImpactFreeze(
 		return;
 	}
 
-	// Knockback은 Impact Hold가 끝날 때까지 보류.
-	if (KnockbackStrength > 0.0f)
+	if (ImpactResult == EDICombatImpactResult::Hit && KnockbackStrength > 0.0f)
 	{
 		FPendingImpactKnockback PendingKnockback;
 		PendingKnockback.Target = HitActor;
@@ -463,18 +579,10 @@ void UCombatComponent::StartImpactFreeze(
 		PendingImpactKnockbacks.Add(PendingKnockback);
 	}
 
-	const TWeakObjectPtr<AActor> WeakVictim(HitActor);
-
-	if (!PendingImpactVictims.Contains(WeakVictim))
-	{
-		PendingImpactVictims.Add(WeakVictim);
-	}
-
 	if (!bImpactFreezeActive)
 	{
 		bImpactFreezeActive = true;
 
-		// 공격자는 정확한 Contact Frame에서 즉시 Hold.
 		PauseCurrentImpactMontage(Attacker);
 
 		GetWorld()->GetTimerManager().SetTimer(
@@ -485,17 +593,52 @@ void UCombatComponent::StartImpactFreeze(
 			false);
 	}
 
-	// Player Victim은 이미 HitReact가 시작됐을 수 있고,
-	// Enemy는 StateTree 전환 후 준비될 때까지 다음 Tick에서 재확인.
-	TryPausePendingImpactVictims();
+	switch (ImpactResult)
+	{
+	case EDICombatImpactResult::Hit:
+		{
+			const TWeakObjectPtr<AActor> WeakVictim(HitActor);
+
+			if (!PendingImpactVictims.Contains(WeakVictim))
+			{
+				PendingImpactVictims.Add(WeakVictim);
+			}
+
+			TryPausePendingImpactVictims();
+			break;
+		}
+
+	case EDICombatImpactResult::GuardHit:
+		PauseCurrentImpactMontage(HitActor);
+		break;
+
+	case EDICombatImpactResult::GuardBreak:
+		if (HitActor->IsA<ADongincheonCharacter>())
+		{
+			PauseCurrentImpactMontage(HitActor);
+		}
+		break;
+
+	default:
+		break;
+	}
 }
 
 void UCombatComponent::FinishImpactFreeze()
 {
+	UE_LOG(
+	LogTemp,
+	Warning,
+	TEXT("[IMPACT_FREEZE] FINISH | PausedMontages=%d | PendingKnockbacks=%d"),
+	PausedImpactMontages.Num(),
+	PendingImpactKnockbacks.Num());
+	
 	bImpactFreezeActive = false;
 	bImpactVictimPauseRetryScheduled = false;
+	bImpactVictimReadyPauseScheduled = false;
 
 	PendingImpactVictims.Reset();
+	ReadyImpactVictims.Reset();
 
 	for (const FImpactPausedMontageState& PausedState : PausedImpactMontages)
 	{
@@ -536,86 +679,81 @@ bool UCombatComponent::PerformSocketHitTrace(FName SocketName, float TraceRadius
 	return CollectSocketHitActors(SocketName, TraceRadius, OutHitActors, bDrawDebug);
 }
 
-bool UCombatComponent::ProcessHitActor(
-	AActor* HitActor,
-	const FVector& HitLocation,
-	FName SocketName)
+bool UCombatComponent::ProcessHitActor(AActor* HitActor, const FVector& HitLocation, FName SocketName)
 {
-	if (!IsValid(HitActor))
-	{
-		return false;
-	}
+    if (!IsValid(HitActor))
+    {
+        return false;
+    }
 
-	ACharacter* OwnerCharacter =
-		Cast<ACharacter>(GetOwner());
+    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
 
-	if (!IsValid(OwnerCharacter))
-	{
-		return false;
-	}
+    if (!IsValid(OwnerCharacter))
+    {
+        return false;
+    }
 
-	if (HitActor == OwnerCharacter)
-	{
-		return false;
-	}
+    if (HitActor == OwnerCharacter)
+    {
+        return false;
+    }
 
-	if (!IsValidCombatTarget(HitActor))
-	{
-		return false;
-	}
+    if (!IsValidCombatTarget(HitActor))
+    {
+        return false;
+    }
 
-	const bool bOwnerIsPlayer =
-		OwnerCharacter->IsA<ADongincheonCharacter>();
+    const bool bOwnerIsPlayer = OwnerCharacter->IsA<ADongincheonCharacter>();
+    const bool bOwnerIsEnemy = OwnerCharacter->IsA<ADongincheonEnemyBase>();
+    const bool bTargetIsPlayer = HitActor->IsA<ADongincheonCharacter>();
+    const bool bTargetIsEnemy = HitActor->IsA<ADongincheonEnemyBase>();
 
-	const bool bOwnerIsEnemy =
-		OwnerCharacter->IsA<ADongincheonEnemyBase>();
+    const bool bValidCombatTarget = (bOwnerIsPlayer && bTargetIsEnemy) || (bOwnerIsEnemy && bTargetIsPlayer);
 
-	const bool bTargetIsPlayer =
-		HitActor->IsA<ADongincheonCharacter>();
+    if (!bValidCombatTarget)
+    {
+        return false;
+    }
 
-	const bool bTargetIsEnemy =
-		HitActor->IsA<ADongincheonEnemyBase>();
+    const TWeakObjectPtr<AActor> HitActorPtr(HitActor);
 
-	const bool bValidCombatTarget =
-		(bOwnerIsPlayer && bTargetIsEnemy) ||
-		(bOwnerIsEnemy && bTargetIsPlayer);
+    if (HitActorThisAttack.Contains(HitActorPtr))
+    {
+        return false;
+    }
 
-	if (!bValidCombatTarget)
-	{
-		return false;
-	}
+    HitActorThisAttack.Add(HitActorPtr);
 
-	const TWeakObjectPtr<AActor> HitActorPtr(HitActor);
+    PendingImpactResult = EDICombatImpactResult::Hit;
 
-	if (HitActorThisAttack.Contains(HitActorPtr))
-	{
-		return false;
-	}
+    float AppliedDamage = 0.0f;
 
-	HitActorThisAttack.Add(HitActorPtr);
+    if (ActiveDamageAmount > 0.0f)
+    {
+        AppliedDamage = DealDamage(HitActor, ActiveDamageAmount);
+    }
 
-	float AppliedDamage = 0.0f;
+    const EDICombatImpactResult ImpactResult = PendingImpactResult;
 
-	if (ActiveDamageAmount > 0.0f)
-	{
-		AppliedDamage =
-			DealDamage(HitActor, ActiveDamageAmount);
-	}
+    const bool bValidImpact =
+        ImpactResult == EDICombatImpactResult::GuardHit ||
+        ImpactResult == EDICombatImpactResult::GuardBreak ||
+        (ImpactResult == EDICombatImpactResult::Hit && AppliedDamage > 0.0f);
 
-	if (AppliedDamage > 0.0f)
-	{
-		StartImpactFreeze(
-			HitActor,
-			ActiveKnockbackStrength);
-	}
+    if (bValidImpact)
+    {
+        const float ImpactKnockbackStrength = ImpactResult == EDICombatImpactResult::Hit ? ActiveKnockbackStrength : 0.0f;
 
-	OnHitConfirmed.Broadcast(
-		HitActor,
-		HitLocation,
-		SocketName,
-		AppliedDamage);
+        StartImpactFreeze(HitActor, ImpactKnockbackStrength, ImpactResult);
 
-	return true;
+        OnImpactConfirmed.Broadcast(HitActor,HitLocation,SocketName,AppliedDamage,ImpactResult);
+    }
+
+    OnHitConfirmed.Broadcast(HitActor,HitLocation,SocketName,AppliedDamage);
+
+    PendingImpactResult = EDICombatImpactResult::None;
+
+    return true;
 }
 
 bool UCombatComponent::ProcessSocketHit(FName SocketName)
@@ -654,10 +792,7 @@ bool UCombatComponent::ProcessSocketHit(FName SocketName)
 
 	for (AActor* HitActor : HitActors)
 	{
-		if (ProcessHitActor(
-			HitActor,
-			HitLocation,
-			SocketName))
+		if (ProcessHitActor(HitActor,HitLocation,SocketName))
 		{
 			bAnyNewHit = true;
 		}

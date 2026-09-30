@@ -2,6 +2,7 @@
 
 #include "UI/Widgets/DIHealthBarWidgetBase.h"
 #include "UI/Widgets/DIQTEPromptWidgetBase.h"
+#include "UI/Widgets/DIBossIntroWidgetBase.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/Widget.h"
 #include "Components/CanvasPanelSlot.h"
@@ -130,6 +131,28 @@ void UDIHUDRootWidget::ClearQTESource()
 	}
 
 	QTEPrompt->ClearQTESource();
+}
+
+void UDIHUDRootWidget::ShowBossIntro(const FText& BossRole,const FText& BossName)
+{
+	if (!IsValid(BossIntro))
+	{
+		return;
+	}
+
+	BossIntro->ShowBossIntro(
+		BossRole,
+		BossName);
+}
+
+void UDIHUDRootWidget::HideBossIntro()
+{
+	if (!IsValid(BossIntro))
+	{
+		return;
+	}
+
+	BossIntro->HideBossIntro();
 }
 
 void UDIHUDRootWidget::SetHUDContext(EDIHUDContext NewContext)

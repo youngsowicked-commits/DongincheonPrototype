@@ -17,6 +17,13 @@ UDICharacterAudioComponent::UDICharacterAudioComponent()
 
 UAudioComponent* UDICharacterAudioComponent::PlayAudioEvent(FGameplayTag EventTag, const FDIAudioEventContext& Context)
 {
+    UE_LOG(
+        LogDIAudio,
+        Warning,
+        TEXT("[AUDIO DEBUG] PlayAudioEvent Called | Owner=%s | Tag=%s"),
+        *GetNameSafe(GetOwner()),
+        *EventTag.ToString());
+    
     if (!EventTag.IsValid())
     {
         UE_LOG(
@@ -32,7 +39,7 @@ UAudioComponent* UDICharacterAudioComponent::PlayAudioEvent(FGameplayTag EventTa
     {
         UE_LOG(
             LogDIAudio,
-            Verbose,
+            Warning,
             TEXT("[%s] AudioProfile is not assigned."),
             *GetNameSafe(GetOwner()));
 

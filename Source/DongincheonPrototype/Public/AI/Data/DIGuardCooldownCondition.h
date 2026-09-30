@@ -13,14 +13,10 @@ struct DONGINCHEONPROTOTYPE_API FDIGuardCooldownConditionInstanceData
 
 	UPROPERTY(EditAnywhere, Category = "Context")
 	TObjectPtr<APawn> Pawn = nullptr;
-
-	UPROPERTY(EditAnywhere, Category = "Guard", meta = (ClampMin = "0.0"))
-	float CooldownDuration = 5.0f;
 };
 
 USTRUCT(meta = (DisplayName = "DI Guard Cooldown"))
-struct DONGINCHEONPROTOTYPE_API FDIGuardCooldownCondition
-	: public FStateTreeConditionCommonBase
+struct DONGINCHEONPROTOTYPE_API FDIGuardCooldownCondition : public FStateTreeConditionCommonBase
 {
 	GENERATED_BODY()
 

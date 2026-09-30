@@ -43,6 +43,9 @@ public:
 	void MarkGuardUsed();
 	bool CanUseGuard(float CooldownDuration) const;
 	
+	void MarkHitReactUsed();
+	bool CanUseHitReact(float CooldownDuration) const;
+	
 	UFUNCTION(BlueprintCallable, Category = "AI|StateTree")
 	void StartStateTreeLogic();
 	
@@ -61,4 +64,5 @@ protected:
 private:
 	TWeakObjectPtr<AActor> CombatTarget;
 	double LastGuardTime = -1.0;
+	double LastHitReactTime = -1.0;
 };

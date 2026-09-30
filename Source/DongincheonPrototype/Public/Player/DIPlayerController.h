@@ -33,6 +33,13 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "HUD|QTE")
 	void ClearQTESource();
+	
+	// Boss Intro ----------------------------------------------
+	UFUNCTION(BlueprintCallable, Category = "HUD|BossIntro")
+	void ShowBossIntro(const FText& BossRole, const FText& BossName);
+
+	UFUNCTION(BlueprintCallable, Category = "HUD|BossIntro")
+	void HideBossIntro();
 
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void SetBossHUD(UHealthComponent* BossHealthComponent,bool bActive);

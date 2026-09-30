@@ -7,6 +7,7 @@
 
 class UDIHealthBarWidgetBase;
 class UDIQTEPromptWidgetBase;
+class UDIBossIntroWidgetBase;
 class UHealthComponent;
 class UQTEComponent;
 class UWidget;
@@ -46,6 +47,13 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "HUD")
     bool IsBossHUDActive() const;
+    
+    // Boss Intro ----------------------------------------------
+    UFUNCTION(BlueprintCallable, Category = "HUD|BossIntro")
+    void ShowBossIntro(const FText& BossRole, const FText& BossName);
+
+    UFUNCTION(BlueprintCallable, Category = "HUD|BossIntro")
+    void HideBossIntro();
     
     // QTE ---------------------------------------------------
     UFUNCTION(BlueprintCallable, Category = "HUD|QTE")
@@ -106,6 +114,12 @@ private:
     
     UPROPERTY(Transient)
     EDIHUDContext CurrentHUDContext = EDIHUDContext::Gameplay;
+    
+    // Boss Intro Presentation
+    // CombatHUDContainer 밖의 독립 레이어.
+    // Cinematic Context에서도 표시 가능해야 한다.
+    UPROPERTY(meta = (BindWidget))
+    TObjectPtr<UDIBossIntroWidgetBase> BossIntro;
     
     UPROPERTY(Transient)
     TObjectPtr<AActor> LockOnTarget;

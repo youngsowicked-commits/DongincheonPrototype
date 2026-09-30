@@ -11,8 +11,23 @@ void UDIAnimNotify_AudioEvent::Notify(
 {
 	Super::Notify(MeshComp, Animation, EventReference);
 
-	if (!MeshComp || !EventTag.IsValid())
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("[AUDIO NOTIFY] FIRED | Mesh=%s | Anim=%s | Tag=%s"),
+		*GetNameSafe(MeshComp),
+		*GetNameSafe(Animation),
+		*EventTag.ToString());
+
+	if (!MeshComp)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[AUDIO NOTIFY] FAIL | MeshComp=NULL"));
+		return;
+	}
+
+	if (!EventTag.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[AUDIO NOTIFY] FAIL | EventTag INVALID"));
 		return;
 	}
 
@@ -20,24 +35,41 @@ void UDIAnimNotify_AudioEvent::Notify(
 
 	if (!Owner)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[AUDIO NOTIFY] FAIL | Owner=NULL"));
 		return;
 	}
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("[AUDIO NOTIFY] Owner=%s"),
+		*GetNameSafe(Owner));
 
 	UDICharacterAudioComponent* AudioComponent =
 		Owner->FindComponentByClass<UDICharacterAudioComponent>();
 
 	if (!AudioComponent)
 	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[AUDIO NOTIFY] FAIL | AudioComponent NOT FOUND | Owner=%s"),
+			*GetNameSafe(Owner));
+
 		return;
 	}
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("[AUDIO NOTIFY] AudioComponent FOUND=%s"),
+		*GetNameSafe(AudioComponent));
 
 	FDIAudioEventContext Context;
 	Context.Instigator = Owner;
 	Context.Location = Owner->GetActorLocation();
 	Context.SocketName = SocketName;
 
-	// Socket이 지정되어 있고 실제로 존재한다면
-	// Context의 World Location도 정확한 Socket 위치로 기록.
 	if (!SocketName.IsNone() && MeshComp->DoesSocketExist(SocketName))
 	{
 		Context.Location = MeshComp->GetSocketLocation(SocketName);

@@ -329,6 +329,24 @@ bool ADongincheonAIController::CanUseGuard(float CooldownDuration) const
 	return ElapsedTime >= static_cast<double>(CooldownDuration);
 }
 
+void ADongincheonAIController::MarkHitReactUsed()
+{
+	const UWorld* World = GetWorld();
+	if (!IsValid(World)) { return; }
+
+	LastHitReactTime = World->GetTimeSeconds();
+}
+
+bool ADongincheonAIController::CanUseHitReact(float CooldownDuration) const
+{
+	if (CooldownDuration <= 0.0f) { return true; }
+	if (LastHitReactTime < 0.0) { return true; }
+
+	const UWorld* World = GetWorld();
+	if (!IsValid(World)) { return false; }
+
+	return World->GetTimeSeconds() - LastHitReactTime >= static_cast<double>(CooldownDuration);
+}
 
 void ADongincheonAIController::OnPossess(APawn* InPawn)
 {
@@ -336,6 +354,7 @@ void ADongincheonAIController::OnPossess(APawn* InPawn)
 	
 	CombatTarget.Reset();
 	LastGuardTime = -1.0;
+	LastHitReactTime = -1.0;
 	
 	if (!IsValid(InPawn))
 	{

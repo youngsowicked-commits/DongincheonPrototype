@@ -155,6 +155,26 @@ void ADIPlayerController::ClearQTESource()
     HUDRootWidget->ClearQTESource();
 }
 
+void ADIPlayerController::ShowBossIntro(const FText& BossRole,const FText& BossName)
+{
+    if (!IsValid(HUDRootWidget))
+    {
+        return;
+    }
+
+    HUDRootWidget->ShowBossIntro(BossRole,BossName);
+}
+
+void ADIPlayerController::HideBossIntro()
+{
+    if (!IsValid(HUDRootWidget))
+    {
+        return;
+    }
+
+    HUDRootWidget->HideBossIntro();
+}
+
 void ADIPlayerController::SetBossHUD(UHealthComponent* BossHealthComponent,bool bActive)
 {
     if (!IsValid(HUDRootWidget))

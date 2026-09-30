@@ -9,6 +9,7 @@
 #include "Gameplay/Data/DIGrabData.h"
 #include "Player/DIPlayerController.h"
 #include "Components/QTEComponent.h"
+#include "Gameplay/Data/DICombatTypes.h"
 #include "DongincheonCharacter.generated.h"
 
 enum class EDIGrabState : uint8;
@@ -244,7 +245,8 @@ protected:
 	
 	//Hit Feedback
 	UFUNCTION()
-	void HandleCombatHitConfirmed(AActor* HitActor, FVector HitLocation, FName HitSocketName, float AppliedDamage);
+	void HandleCombatHitConfirmed(AActor* HitActor, FVector HitLocation, FName HitSocketName, float AppliedDamage,
+		EDICombatImpactResult ImpactResult);
 	
 	void StartHitStop();
 	

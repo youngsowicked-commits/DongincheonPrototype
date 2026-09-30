@@ -87,6 +87,28 @@ struct DONGINCHEONPROTOTYPE_API FDIStandoffConfig
 	float StepOutWeight = 1.0f;
 };
 
+USTRUCT(BlueprintType)
+struct DONGINCHEONPROTOTYPE_API FDIEnemyGuardBehaviorConfig
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Guard", meta = (ClampMin = "0.0"))
+	float Cooldown = 5.0f;
+};
+
+USTRUCT(BlueprintType)
+struct DONGINCHEONPROTOTYPE_API FDIEnemyHitReactBehaviorConfig
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HitReact", meta = (ClampMin = "0.0"))
+	float Cooldown = 0.4f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HitReact")
+	bool bIgnoreWhileAttacking = false;
+};
+
+
 UCLASS(BlueprintType)
 class DONGINCHEONPROTOTYPE_API UDIEnemyDefinition : public UDataAsset
 {
@@ -106,6 +128,12 @@ public:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AI|Standoff")
 	FDIStandoffConfig Standoff;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AI|Guard")
+	FDIEnemyGuardBehaviorConfig GuardBehavior;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AI|HitReact")
+	FDIEnemyHitReactBehaviorConfig HitReactBehavior;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Hit React")
 	FHitReactConfig HitReact;

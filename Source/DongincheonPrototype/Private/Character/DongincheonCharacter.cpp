@@ -47,11 +47,6 @@ void ADongincheonCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	if (!IsValid(InteractionComponent))
-	{
-		InteractionComponent = FindComponentByClass<UInteractionComponent>();
-	}
-	
 	if (IsValid(HealthComponent))
 	{
 		HealthComponent->OnDamaged.AddUniqueDynamic(this, &ADongincheonCharacter::HandleHealthDamaged);
@@ -60,7 +55,7 @@ void ADongincheonCharacter::BeginPlay()
 	
 	if (IsValid(CombatComponent))
 	{
-		CombatComponent->OnHitConfirmed.AddUniqueDynamic(this,&ADongincheonCharacter::HandleCombatHitConfirmed);
+		CombatComponent->OnImpactConfirmed.AddUniqueDynamic(this,&ADongincheonCharacter::HandleCombatHitConfirmed);
 	}
 	
 	if (IsValid(GrabComponent))
@@ -849,7 +844,7 @@ void ADongincheonCharacter::StartPlayerAttack(const FAttackConfig& Attack)
 	}
 	
 	CombatComponent->BeginAttack(Attack.Damage,Attack.KnockbackStrength,Attack.bBreaksGuard,Attack.HitTraceRadius,
-	Attack.ImpactFreezeDuration);
+	Attack.ImpactFreezeDuration,Attack.Montage);
 
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
@@ -1198,6 +1193,13 @@ void ADongincheonCharacter::HandleAttackMontageEnded(UAnimMontage* Montage, bool
     {
         return;
     }
+	
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("[PLAYER_ATTACK_END] Montage=%s | Interrupted=%s"),
+		*GetNameSafe(Montage),
+		bInterrupted ? TEXT("TRUE") : TEXT("FALSE"));
 
     ActiveAttackMontage = nullptr;
 	
@@ -2931,29 +2933,33 @@ float ADongincheonCharacter::TakeDamage(float DamageAmount, struct FDamageEvent 
 
 
 //Hit Confirm Feedback
-void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor, FVector HitLocation, FName HitSocketName, float AppliedDamage)
+void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor,FVector HitLocation,FName HitSocketName,
+	float AppliedDamage,EDICombatImpactResult ImpactResult)
 {
-	UCombatComponent* HitCombat = IsValid(HitActor) ? HitActor->FindComponentByClass<UCombatComponent>() : nullptr;
-	const bool bGuardContact = IsValid(HitCombat) && (HitCombat->IsGuarding() || HitCombat->IsGuardBroken());
+	if (!IsValid(HitActor))
+	{
+		return;
+	}
 
-	if (AppliedDamage <= 0.0f && !bGuardContact) return;
+	if (ImpactResult == EDICombatImpactResult::Hit && AppliedDamage <= 0.0f)
+	{
+		return;
+	}
 
 	StopAttackAssistMove();
 
-	if (AppliedDamage > 0.0f && IsValid(HitActor))
+	if (ImpactResult == EDICombatImpactResult::Hit)
 	{
 		if (ADIPlayerController* DIPlayerController = Cast<ADIPlayerController>(GetController()))
 		{
 			DIPlayerController->ShowEnemyHUD(HitActor);
 		}
-	}
 
-	if (AppliedDamage > 0.0f && IsValid(HeatActionComponent))
-	{
-		HeatActionComponent->AddHeat(HeatGainPerHit);
+		if (IsValid(HeatActionComponent))
+		{
+			HeatActionComponent->AddHeat(HeatGainPerHit);
+		}
 	}
-
-	if (bHitStopActive) return;
 
 	if (HitCameraShakeClass)
 	{
@@ -2961,12 +2967,14 @@ void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor, FVector H
 		{
 			if (APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager)
 			{
-				CameraManager->StartCameraShake(HitCameraShakeClass, HitCameraShakeScale, ECameraShakePlaySpace::CameraLocal, FRotator::ZeroRotator);
+				CameraManager->StartCameraShake(
+					HitCameraShakeClass,
+					HitCameraShakeScale,
+					ECameraShakePlaySpace::CameraLocal,
+					FRotator::ZeroRotator);
 			}
 		}
 	}
-
-	StartHitStop();
 }
 
 void ADongincheonCharacter::StartHitStop()

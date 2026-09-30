@@ -48,6 +48,7 @@ float ADongincheonEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent 
 	if (IsValid(CombatComponent))
 	{
 		const EGuardResult GuardResult = CombatComponent->TryBlockDamage(DamageAmount, DamageCauser);
+
 		switch (GuardResult)
 		{
 		case EGuardResult::Blocked:
@@ -126,16 +127,21 @@ bool ADongincheonEnemyBase::StartGuard()
 		                           ? EnemyDefinition->Guard.GuardPlayRate
 		                           : 1.0f;
 
-	const float MontageResult = AnimInstance->Montage_Play(GuardMontage,SafePlayRate);
+	const float MontageResult = AnimInstance->Montage_Play(GuardMontage, SafePlayRate);
 
 	if (MontageResult <= 0.0f)
 	{
 		return false;
 	}
 
-	UE_LOG(LogTemp,Warning,TEXT("[GUARD] Montage Started | Enemy=%s | MontageResult=%.2f"),*GetName(),MontageResult);
+	CombatComponent->BeginGuard();
 
-	return true;
+	UE_LOG(LogTemp, Warning, TEXT("[GUARD] Montage Started | Enemy=%s | MontageResult=%.2f | IsGuarding=%s"),
+	       *GetName(),
+	       MontageResult,
+	       CombatComponent->IsGuarding() ? TEXT("TRUE") : TEXT("FALSE"));
+
+	return CombatComponent->IsGuarding();
 }
 
 void ADongincheonEnemyBase::StopGuard()
@@ -329,7 +335,9 @@ bool ADongincheonEnemyBase::StartAttack(int32 AttackIndex)
 				UE_LOG(
 					LogTemp,
 					Log,
-					TEXT("[ENEMY_ATTACK_SPACING] Enemy=%s | AttackIndex=%d | Distance=%.1f | Preferred=%.1f | Lunge=SKIPPED"),
+					TEXT(
+						"[ENEMY_ATTACK_SPACING] Enemy=%s | AttackIndex=%d | Distance=%.1f | Preferred=%.1f | Lunge=SKIPPED"
+					),
 					*GetName(),
 					AttackIndex,
 					TargetDistance,
@@ -338,12 +346,20 @@ bool ADongincheonEnemyBase::StartAttack(int32 AttackIndex)
 		}
 	}
 
-	CombatComponent->BeginAttack(AttackConfig.Damage, AttackConfig.KnockbackStrength, AttackConfig.bBreaksGuard,
-	                             AttackConfig.HitTraceRadius);
+	UE_LOG(
+	LogTemp,
+	Warning,
+	TEXT("[ENEMY_IMPACT_CONFIG] Enemy=%s | AttackIndex=%d | Duration=%.3f | Montage=%s"),
+	*GetName(),
+	AttackIndex,
+	AttackConfig.ImpactFreezeDuration,
+	*GetNameSafe(AttackConfig.Montage));
+	
+	CombatComponent->BeginAttack(AttackConfig.Damage,AttackConfig.KnockbackStrength,AttackConfig.bBreaksGuard,
+	AttackConfig.HitTraceRadius,AttackConfig.ImpactFreezeDuration,AttackConfig.Montage);
 
 	const float MontageResult = AnimInstance->Montage_Play(AttackConfig.Montage, AttackConfig.PlayRate,
-	                                                       EMontagePlayReturnType::MontageLength, 0.0f,
-	                                                       AttackConfig.bStopAllMontages);
+	EMontagePlayReturnType::MontageLength, 0.0f,AttackConfig.bStopAllMontages);
 
 	if (MontageResult <= 0.0f)
 	{
@@ -723,18 +739,31 @@ void ADongincheonEnemyBase::HandleHealthDamaged(float DamageAmount, AActor* Dama
 {
 	if (ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController()))
 	{
-		// Damage가 들어온 순간 기존 AI Path/Chase 이동을 먼저 제거한다.
-		// 이후 UCombatComponent가 Knockback Impulse를 적용할 수 있도록
-		// HitReact 진입 전에만 수행한다.
-		UE_LOG(LogTemp, Warning, TEXT("01B: HitReact AIController Cast SUCCESS"));
-		AIController->StopMovement();
+		const float HitReactCooldown = IsValid(EnemyDefinition) ? EnemyDefinition->HitReactBehavior.Cooldown : 0.0f;
+		const bool bIgnoreDuringAttack = IsValid(EnemyDefinition) && EnemyDefinition->HitReactBehavior.bIgnoreWhileAttacking && IsAttackActive();
 
-		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+		if (bIgnoreDuringAttack)
 		{
-			Movement->StopMovementImmediately();
+			UE_LOG(LogTemp, Warning, TEXT("[HITREACT] ATTACK COMMIT SKIP | Enemy=%s"), *GetName());
 		}
+		else if (AIController->CanUseHitReact(HitReactCooldown))
+		{
+			AIController->StopMovement();
 
-		AIController->SendHitReactEvent();
+			if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+			{
+				Movement->StopMovementImmediately();
+			}
+
+			AIController->MarkHitReactUsed();
+			AIController->SendHitReactEvent();
+
+			UE_LOG(LogTemp, Warning, TEXT("[HITREACT] TRIGGER | Enemy=%s | Cooldown=%.2f"), *GetName(), HitReactCooldown);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[HITREACT] COOLDOWN SKIP | Enemy=%s | Cooldown=%.2f"), *GetName(), HitReactCooldown);
+		}
 	}
 	else
 	{

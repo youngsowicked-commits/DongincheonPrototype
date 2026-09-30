@@ -43,7 +43,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Combat|Attack")
 	void BeginAttack(float DamageAmount,float KnockbackStrength,bool bBreakGuard = false,float HitTraceRadius = 0.0f,
-	float ImpactFreezeDuration = 0.045f);
+	float ImpactFreezeDuration = 0.0f,UAnimMontage* AttackMontage = nullptr);
 	
 	UFUNCTION(BlueprintCallable, Category = "Combat|Attack")
 	void EndAttack();
@@ -149,13 +149,15 @@ private:
 	
 	void ApplyKnockback(AActor* Target, float KnockbackStrength) const;
 	
-	void StartImpactFreeze(AActor* HitActor, float KnockbackStrength);
+	void StartImpactFreeze(AActor* HitActor, float KnockbackStrength, EDICombatImpactResult ImpactResult);
 	
 	void FinishImpactFreeze();
 	
 	void PauseCurrentImpactMontage(AActor* Actor);
 	
 	void TryPausePendingImpactVictims();
+	
+	void PauseReadyImpactVictims();
 	
 	bool IsVictimHitReactReady(AActor* Victim) const;
 	
@@ -200,6 +202,9 @@ private:
 	float ActiveImpactFreezeDuration = 0.045f;
 	
 	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveImpactMontage = nullptr;
+	
+	UPROPERTY(Transient)
 	bool bActiveAttackBreakGuard = false;
 	
 	TSet<TWeakObjectPtr<AActor>> HitActorThisAttack;
@@ -218,8 +223,10 @@ private:
 
 	TArray<FImpactPausedMontageState> PausedImpactMontages;
 	TArray<TWeakObjectPtr<AActor>> PendingImpactVictims;
+	TArray<TWeakObjectPtr<AActor>> ReadyImpactVictims;
 
 	bool bImpactVictimPauseRetryScheduled = false;
+	bool bImpactVictimReadyPauseScheduled = false;
 
 	bool bImpactFreezeActive = false;
 	
