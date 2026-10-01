@@ -304,14 +304,11 @@ bool ADongincheonEnemyBase::StartAttack(int32 AttackIndex)
 			// 이미 공격하기 좋은 거리 안이면 추가 전진을 하지 않는다.
 			if (TargetDistance > AttackConfig.PreferredTargetDistance)
 			{
-				const float LungeRange = FMath::Max(
-					AttackConfig.MaxAssistDistance - AttackConfig.PreferredTargetDistance,
-					1.0f);
+				const float LungeRange = FMath::Max(AttackConfig.MaxAssistDistance - AttackConfig.PreferredTargetDistance,1.0f);
 
-				const float LungeAlpha = FMath::Clamp(
-					(TargetDistance - AttackConfig.PreferredTargetDistance) / LungeRange,
-					0.0f,
-					1.0f);
+				const float RawLungeAlpha = FMath::Clamp((TargetDistance - AttackConfig.PreferredTargetDistance) / LungeRange, 0.0f, 1.0f);
+				const float MinCommitLungeAlpha = TargetDistance >= AttackConfig.PreferredTargetDistance + 10.0f ? 0.35f : 0.0f;
+				const float LungeAlpha = FMath::Max(RawLungeAlpha, MinCommitLungeAlpha);
 
 				UE_LOG(
 					LogTemp,
@@ -371,6 +368,9 @@ bool ADongincheonEnemyBase::StartAttack(int32 AttackIndex)
 	}
 
 	ActiveAttackIndex = AttackIndex;
+	bAttackCommitActive = AttackConfig.LungeStrength > 0.0f;
+	AttackCommitElapsedTime = 0.0f;
+	AttackCommitDirection = GetActorForwardVector().GetSafeNormal2D();
 
 	return true;
 }
@@ -419,6 +419,9 @@ void ADongincheonEnemyBase::FinishAttack()
 	}
 
 	ActiveAttackIndex = INDEX_NONE;
+	bAttackCommitActive = false;
+	AttackCommitElapsedTime = 0.0f;
+	AttackCommitDirection = FVector::ZeroVector;
 }
 
 void ADongincheonEnemyBase::CancelAttack(float BlendOutTime)
@@ -448,6 +451,9 @@ void ADongincheonEnemyBase::CancelAttack(float BlendOutTime)
 	}
 
 	ActiveAttackIndex = INDEX_NONE;
+	bAttackCommitActive = false;
+	AttackCommitElapsedTime = 0.0f;
+	AttackCommitDirection = FVector::ZeroVector;
 }
 
 void ADongincheonEnemyBase::SetPhase2Active(bool bActive)
@@ -1162,6 +1168,39 @@ void ADongincheonEnemyBase::HandleHeatActionStateChanged(EDIHeatActionState Prev
 void ADongincheonEnemyBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (!bAttackCommitActive) return;
+
+	AttackCommitElapsedTime += DeltaTime;
+
+	if (AttackCommitElapsedTime >= 0.20f || !IsAttackActive())
+	{
+		bAttackCommitActive = false;
+		return;
+	}
+
+	if (!EnemyDefinition || !EnemyDefinition->Attacks.IsValidIndex(ActiveAttackIndex))
+	{
+		bAttackCommitActive = false;
+		return;
+	}
+
+	ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController());
+	AActor* CombatTarget = IsValid(AIController) ? AIController->GetCombatTarget() : nullptr;
+
+	if (!IsValid(CombatTarget))
+	{
+		bAttackCommitActive = false;
+		return;
+	}
+
+	const FAttackConfig& AttackConfig = EnemyDefinition->Attacks[ActiveAttackIndex];
+	const float DistanceToTarget = FVector::Dist2D(GetActorLocation(), CombatTarget->GetActorLocation());
+
+	if (DistanceToTarget > AttackConfig.PreferredTargetDistance)
+	{
+		AddMovementInput(AttackCommitDirection, 0.6f);
+	}
 }
 
 // Called to bind functionality to input

@@ -24,6 +24,7 @@ class UDIHeatActionDefinition;
 class UAnimMontage;
 class UDICharacterAudioComponent;
 class UCameraShakeBase;
+class UAnimNotify_DIComboChainPoint;
 
 struct FInputActionValue;
 
@@ -124,6 +125,11 @@ protected:
 	void HandleMoveInputStartedOrTriggered(const FInputActionValue& Value);
 	void HandleMoveInputCompleted(const FInputActionValue& Value);
 	
+	void RefreshMovementSpeed();
+	
+	void HandleRunStarted();
+	void HandleRunEnded();
+	
 	void HandleDodgeInput();
 	
 	//Grab
@@ -216,6 +222,9 @@ protected:
 	
 	void StartPlayerAttack(const FAttackConfig& Attack);
 	
+	friend class UAnimNotify_DIComboChainPoint;
+	bool TryAdvanceQueuedCombo();
+	
 	void StartAttackAssistMove(AActor* Target, const FAttackConfig& Attack);
 	
 	void UpdateAttackAssistMove(float DeltaTime);
@@ -294,6 +303,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
 	TObjectPtr<UInputAction> MoveAction;
 	
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="Player|Movement",meta=(ClampMin="0.0"))
+	float ExplorationWalkSpeed = 200.0f;
+	
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="Player|Movement",meta=(ClampMin="0.0"))
+	float ExplorationRunSpeed = 600.0f;
+
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="Player|Movement",meta=(ClampMin="0.0"))
+	float CombatMoveSpeed = 500.0f;
+
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="Player|Movement",meta=(ClampMin="0.0"))
+	float LockOnMoveSpeed = 240.0f;
+	
+	//Run
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="Player|Input")
+	TObjectPtr<UInputAction> RunAction;
+	
 	//Dodge
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")
 	TObjectPtr<UInputAction> DodgeAction;
@@ -320,10 +345,10 @@ protected:
 	TObjectPtr<UAnimMontage> DodgeRightMontage;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Dodge", meta = (ClampMin = "0.01"))
-	float DodgePlayRate = 1.0f;
+	float DodgePlayRate = 1.4f;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Dodge", meta = (ClampMin = "0.0"))
-	float DodgeStrength = 650.0f;
+	float DodgeStrength = 850.0f;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Dodge")
 	bool bDodgeStopAllMontages = true;
@@ -426,6 +451,8 @@ protected:
 	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
 	bool bCombatInputEnabled = false;
+	
+	bool bRunInputHeld = false;
 	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
 	bool bPlayerAttackActive = false;

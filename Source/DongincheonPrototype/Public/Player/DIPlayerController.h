@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "UI/DIHUDTypes.h"
+#include "Styling/SlateBrush.h"
 #include "DIPlayerController.generated.h"
 
 class UDIHUDRootWidget;
@@ -33,6 +34,26 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "HUD|QTE")
 	void ClearQTESource();
+	
+	// Tutorial ------------------------------------------------
+	UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
+	void ShowTutorialPrompt(const FText& Title, const FText& Description);
+
+	UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
+	void SetTutorialProgress(const FText& ProgressText);
+
+	UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
+	void HideTutorialPrompt();
+	
+	// Context Action Hint ------------------------------------
+	UFUNCTION(BlueprintCallable, Category = "HUD|ContextHint")
+	void ShowContextActionHint(const FText& ActionText);
+
+	UFUNCTION(BlueprintCallable, Category = "HUD|ContextHint")
+	void SetContextActionIcon(const FSlateBrush& InBrush);
+
+	UFUNCTION(BlueprintCallable, Category = "HUD|ContextHint")
+	void HideContextActionHint();
 	
 	// Boss Intro ----------------------------------------------
 	UFUNCTION(BlueprintCallable, Category = "HUD|BossIntro")

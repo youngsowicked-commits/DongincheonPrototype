@@ -2,12 +2,15 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Styling/SlateBrush.h"
 #include "UI/DIHUDTypes.h"
 #include "DIHUDRootWidget.generated.h"
 
 class UDIHealthBarWidgetBase;
 class UDIQTEPromptWidgetBase;
 class UDIBossIntroWidgetBase;
+class UDITutorialPromptWidgetBase;
+class UDIContextActionHintWidgetBase;
 class UHealthComponent;
 class UQTEComponent;
 class UWidget;
@@ -62,6 +65,26 @@ public:
     UFUNCTION(BlueprintCallable, Category = "HUD|QTE")
     void ClearQTESource();
     
+    // Tutorial ----------------------------------------------
+    UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
+    void ShowTutorialPrompt(const FText& Title, const FText& Description);
+
+    UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
+    void SetTutorialProgress(const FText& ProgressText);
+
+    UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
+    void HideTutorialPrompt();
+    
+    // Context Action Hint ------------------------------------
+    UFUNCTION(BlueprintCallable, Category = "HUD|ContextHint")
+    void ShowContextActionHint(const FText& ActionText);
+
+    UFUNCTION(BlueprintCallable, Category = "HUD|ContextHint")
+    void SetContextActionIcon(const FSlateBrush& InBrush);
+
+    UFUNCTION(BlueprintCallable, Category = "HUD|ContextHint")
+    void HideContextActionHint();
+    
     // Global HUD Context ------------------------------------
     UFUNCTION(BlueprintCallable, Category = "HUD")
     void SetHUDContext(EDIHUDContext NewContext);
@@ -111,6 +134,14 @@ private:
     // QTE Prompt
     UPROPERTY(meta = (BindWidget))
     TObjectPtr<UDIQTEPromptWidgetBase> QTEPrompt;
+    
+    // Tutorial Prompt
+    UPROPERTY(meta = (BindWidget))
+    TObjectPtr<UDITutorialPromptWidgetBase> TutorialPrompt;
+    
+    //Context Prompt
+    UPROPERTY(meta = (BindWidget))
+    TObjectPtr<UDIContextActionHintWidgetBase> ContextActionHint;
     
     UPROPERTY(Transient)
     EDIHUDContext CurrentHUDContext = EDIHUDContext::Gameplay;

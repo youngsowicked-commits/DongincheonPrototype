@@ -12,198 +12,194 @@ DEFINE_LOG_CATEGORY_STATIC(LogDIAudio, Log, All);
 
 UDICharacterAudioComponent::UDICharacterAudioComponent()
 {
-    PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = false;
 }
 
 UAudioComponent* UDICharacterAudioComponent::PlayAudioEvent(FGameplayTag EventTag, const FDIAudioEventContext& Context)
 {
-    UE_LOG(
-        LogDIAudio,
-        Warning,
-        TEXT("[AUDIO DEBUG] PlayAudioEvent Called | Owner=%s | Tag=%s"),
-        *GetNameSafe(GetOwner()),
-        *EventTag.ToString());
-    
-    if (!EventTag.IsValid())
-    {
-        UE_LOG(
-            LogDIAudio,
-            Warning,
-            TEXT("[%s] Invalid Audio Event Tag."),
-            *GetNameSafe(GetOwner()));
+	if (!EventTag.IsValid())
+	{
+		UE_LOG(
+			LogDIAudio,
+			Warning,
+			TEXT("[%s] Invalid Audio Event Tag."),
+			*GetNameSafe(GetOwner()));
 
-        return nullptr;
-    }
+		return nullptr;
+	}
 
-    if (!AudioProfile)
-    {
-        UE_LOG(
-            LogDIAudio,
-            Warning,
-            TEXT("[%s] AudioProfile is not assigned."),
-            *GetNameSafe(GetOwner()));
+	if (!AudioProfile)
+	{
+		UE_LOG(
+			LogDIAudio,
+			Warning,
+			TEXT("[%s] AudioProfile is not assigned."),
+			*GetNameSafe(GetOwner()));
 
-        return nullptr;
-    }
+		return nullptr;
+	}
 
-    const FDIAudioEventDefinition* Definition = AudioProfile->FindEvent(EventTag);
+	const FDIAudioEventDefinition* Definition = AudioProfile->FindEvent(EventTag);
 
-    if (!Definition)
-    {
-        UE_LOG(
-            LogDIAudio,
-            Warning,
-            TEXT("[%s] Audio Event not found: %s"),
-            *GetNameSafe(GetOwner()),
-            *EventTag.ToString());
+	if (!Definition)
+	{
+		UE_LOG(
+			LogDIAudio,
+			Warning,
+			TEXT("[%s] Audio Event not found: %s"),
+			*GetNameSafe(GetOwner()),
+			*EventTag.ToString());
 
-        return nullptr;
-    }
+		return nullptr;
+	}
 
-    USoundBase* SelectedSound = SelectVariant(*Definition);
+	USoundBase* SelectedSound = SelectVariant(*Definition);
 
-    if (!SelectedSound)
-    {
-        UE_LOG(
-            LogDIAudio,
-            Warning,
-            TEXT("[%s] Audio Event has no valid sound variant: %s"),
-            *GetNameSafe(GetOwner()),
-            *EventTag.ToString());
+	if (!SelectedSound)
+	{
+		UE_LOG(
+			LogDIAudio,
+			Warning,
+			TEXT("[%s] Audio Event has no valid sound variant: %s"),
+			*GetNameSafe(GetOwner()),
+			*EventTag.ToString());
 
-        return nullptr;
-    }
+		return nullptr;
+	}
 
-    const float PitchMin = FMath::Max(0.01f,FMath::Min(Definition->PitchRange.X,Definition->PitchRange.Y));
+	const float PitchMin = FMath::Max(0.01f, FMath::Min(Definition->PitchRange.X, Definition->PitchRange.Y));
 
-    const float PitchMax = FMath::Max(PitchMin,FMath::Max(Definition->PitchRange.X,Definition->PitchRange.Y));
+	const float PitchMax = FMath::Max(PitchMin, FMath::Max(Definition->PitchRange.X, Definition->PitchRange.Y));
 
-    const float Pitch = FMath::FRandRange(PitchMin, PitchMax);
+	const float Pitch = FMath::FRandRange(PitchMin, PitchMax);
 
-    const float Volume = FMath::Max(0.0f,Definition->VolumeMultiplier);
+	const float Volume = FMath::Max(0.0f, Definition->VolumeMultiplier);
 
-    switch (Definition->PlaybackMode)
-    {
-    case EDIAudioPlaybackMode::OwnerAttached:
-    {
-        USceneComponent* AttachComponent =
-            ResolveOwnerAttachComponent();
+	switch (Definition->PlaybackMode)
+	{
+	case EDIAudioPlaybackMode::OwnerAttached:
+		{
+			USceneComponent* AttachComponent =
+				ResolveOwnerAttachComponent();
 
-        if (!AttachComponent)
-        {
-            UE_LOG(
-                LogDIAudio,
-                Warning,
-                TEXT("[%s] No valid attach component for Audio Event: %s"),
-                *GetNameSafe(GetOwner()),
-                *EventTag.ToString());
+			if (!AttachComponent)
+			{
+				UE_LOG(
+					LogDIAudio,
+					Warning,
+					TEXT("[%s] No valid attach component for Audio Event: %s"),
+					*GetNameSafe(GetOwner()),
+					*EventTag.ToString());
 
-            return nullptr;
-        }
+				return nullptr;
+			}
 
-        return UGameplayStatics::SpawnSoundAttached(
-            SelectedSound,
-            AttachComponent,
-            Context.SocketName,
-            FVector::ZeroVector,
-            EAttachLocation::KeepRelativeOffset,
-            true,
-            Volume,
-            Pitch,
-            0.0f,
-            Definition->AttenuationOverride,
-            Definition->ConcurrencyOverride,
-            true);
-    }
+			UAudioComponent* SpawnedAudio = UGameplayStatics::SpawnSoundAttached(
+				SelectedSound,
+				AttachComponent,
+				Context.SocketName,
+				FVector::ZeroVector,
+				EAttachLocation::KeepRelativeOffset,
+				true,
+				Volume,
+				Pitch,
+				0.0f,
+				Definition->AttenuationOverride,
+				Definition->ConcurrencyOverride,
+				true);
+			
 
-    case EDIAudioPlaybackMode::ContextLocation:
-    {
-        return UGameplayStatics::SpawnSoundAtLocation(
-            this,
-            SelectedSound,
-            Context.Location,
-            FRotator::ZeroRotator,
-            Volume,
-            Pitch,
-            0.0f,
-            Definition->AttenuationOverride,
-            Definition->ConcurrencyOverride,
-            true);
-    }
+			return SpawnedAudio;
+		}
 
-    default:
-        break;
-    }
+	case EDIAudioPlaybackMode::ContextLocation:
+		{
+			return UGameplayStatics::SpawnSoundAtLocation(
+				this,
+				SelectedSound,
+				Context.Location,
+				FRotator::ZeroRotator,
+				Volume,
+				Pitch,
+				0.0f,
+				Definition->AttenuationOverride,
+				Definition->ConcurrencyOverride,
+				true);
+		}
 
-    return nullptr;
+	default:
+		break;
+	}
+
+	return nullptr;
 }
 
 bool UDICharacterAudioComponent::HasAudioEvent(FGameplayTag EventTag) const
 {
-    if (!AudioProfile || !EventTag.IsValid())
-    {
-        return false;
-    }
+	if (!AudioProfile || !EventTag.IsValid())
+	{
+		return false;
+	}
 
-    return AudioProfile->FindEvent(EventTag) != nullptr;
+	return AudioProfile->FindEvent(EventTag) != nullptr;
 }
 
 USoundBase* UDICharacterAudioComponent::SelectVariant(const FDIAudioEventDefinition& Definition) const
 {
-    int32 ValidVariantCount = 0;
+	int32 ValidVariantCount = 0;
 
-    for (USoundBase* Variant : Definition.Variants)
-    {
-        if (IsValid(Variant))
-        {
-            ++ValidVariantCount;
-        }
-    }
+	for (USoundBase* Variant : Definition.Variants)
+	{
+		if (IsValid(Variant))
+		{
+			++ValidVariantCount;
+		}
+	}
 
-    if (ValidVariantCount <= 0)
-    {
-        return nullptr;
-    }
+	if (ValidVariantCount <= 0)
+	{
+		return nullptr;
+	}
 
-    int32 SelectedValidIndex = FMath::RandRange(0, ValidVariantCount - 1);
+	int32 SelectedValidIndex = FMath::RandRange(0, ValidVariantCount - 1);
 
-    for (USoundBase* Variant : Definition.Variants)
-    {
-        if (!IsValid(Variant))
-        {
-            continue;
-        }
+	for (USoundBase* Variant : Definition.Variants)
+	{
+		if (!IsValid(Variant))
+		{
+			continue;
+		}
 
-        if (SelectedValidIndex == 0)
-        {
-            return Variant;
-        }
+		if (SelectedValidIndex == 0)
+		{
+			return Variant;
+		}
 
-        --SelectedValidIndex;
-    }
+		--SelectedValidIndex;
+	}
 
-    return nullptr;
+	return nullptr;
 }
 
 USceneComponent* UDICharacterAudioComponent::ResolveOwnerAttachComponent() const
 {
-    AActor* Owner = GetOwner();
+	AActor* Owner = GetOwner();
 
-    if (!Owner)
-    {
-        return nullptr;
-    }
+	if (!Owner)
+	{
+		return nullptr;
+	}
 
-    // Character라면 Mesh 기준.
-    // SocketName을 지정했을 때 손/머리 등의 Socket을 사용할 수 있다.
-    if (ACharacter* Character = Cast<ACharacter>(Owner))
-    {
-        if (USkeletalMeshComponent* Mesh = Character->GetMesh())
-        {
-            return Mesh;
-        }
-    }
+	// Character라면 Mesh 기준.
+	// SocketName을 지정했을 때 손/머리 등의 Socket을 사용할 수 있다.
+	if (ACharacter* Character = Cast<ACharacter>(Owner))
+	{
+		if (USkeletalMeshComponent* Mesh = Character->GetMesh())
+		{
+			return Mesh;
+		}
+	}
 
-    // Character가 아니면 RootComponent fallback.
-    return Owner->GetRootComponent();
+	// Character가 아니면 RootComponent fallback.
+	return Owner->GetRootComponent();
 }

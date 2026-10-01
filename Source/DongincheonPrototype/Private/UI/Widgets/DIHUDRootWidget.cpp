@@ -3,6 +3,8 @@
 #include "UI/Widgets/DIHealthBarWidgetBase.h"
 #include "UI/Widgets/DIQTEPromptWidgetBase.h"
 #include "UI/Widgets/DIBossIntroWidgetBase.h"
+#include "UI/Widgets/DITutorialPromptWidgetBase.h"
+#include "UI/Widgets/DIContextActionHintWidgetBase.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/Widget.h"
 #include "Components/CanvasPanelSlot.h"
@@ -133,6 +135,56 @@ void UDIHUDRootWidget::ClearQTESource()
 	QTEPrompt->ClearQTESource();
 }
 
+void UDIHUDRootWidget::ShowTutorialPrompt(const FText& Title, const FText& Description)
+{
+	if (IsValid(TutorialPrompt))
+	{
+		TutorialPrompt->ShowTutorialPrompt(Title, Description);
+	}
+}
+
+void UDIHUDRootWidget::SetTutorialProgress(const FText& ProgressText)
+{
+	if (IsValid(TutorialPrompt))
+	{
+		TutorialPrompt->SetTutorialProgress(ProgressText);
+	}
+}
+
+void UDIHUDRootWidget::HideTutorialPrompt()
+{
+	if (IsValid(TutorialPrompt))
+	{
+		TutorialPrompt->HideTutorialPrompt();
+	}
+}
+
+void UDIHUDRootWidget::ShowContextActionHint(const FText& ActionText)
+{
+	if (CurrentHUDContext != EDIHUDContext::Gameplay || !IsValid(ContextActionHint))
+	{
+		return;
+	}
+
+	ContextActionHint->ShowContextActionHint(ActionText);
+}
+
+void UDIHUDRootWidget::SetContextActionIcon(const FSlateBrush& InBrush)
+{
+	if (IsValid(ContextActionHint))
+	{
+		ContextActionHint->SetContextActionIcon(InBrush);
+	}
+}
+
+void UDIHUDRootWidget::HideContextActionHint()
+{
+	if (IsValid(ContextActionHint))
+	{
+		ContextActionHint->HideContextActionHint();
+	}
+}
+
 void UDIHUDRootWidget::ShowBossIntro(const FText& BossRole,const FText& BossName)
 {
 	if (!IsValid(BossIntro))
@@ -235,8 +287,7 @@ void UDIHUDRootWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime
 
 void UDIHUDRootWidget::RefreshHUDVisibility()
 {
-	const bool bShowCombatHUD = CurrentHUDContext == EDIHUDContext::Gameplay 
-	|| CurrentHUDContext == EDIHUDContext::QTE;
+	const bool bShowCombatHUD = CurrentHUDContext == EDIHUDContext::Gameplay || CurrentHUDContext == EDIHUDContext::QTE;
 
 	const bool bShowEnemyHUD = bShowCombatHUD && bEnemyHUDActive;
 
@@ -269,5 +320,10 @@ void UDIHUDRootWidget::RefreshHUDVisibility()
 	if (IsValid(QTEPrompt))
 	{
 		QTEPrompt->SetVisibility(bShowQTEPrompt ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
+	
+	if (CurrentHUDContext != EDIHUDContext::Gameplay && IsValid(ContextActionHint) && ContextActionHint->IsContextActionHintVisible())
+	{
+		ContextActionHint->HideContextActionHint();
 	}
 }

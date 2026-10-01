@@ -97,6 +97,10 @@ private:
 	
 	UPROPERTY(Transient)
 	int32 ActiveAttackIndex = INDEX_NONE;
+	
+	bool bAttackCommitActive = false;
+	float AttackCommitElapsedTime = 0.0f;
+	FVector AttackCommitDirection = FVector::ZeroVector;
 
 protected:
 	// Called when the game starts or when spawned

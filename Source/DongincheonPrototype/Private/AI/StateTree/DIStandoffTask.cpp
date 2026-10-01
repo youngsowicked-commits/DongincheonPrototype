@@ -7,14 +7,11 @@
 #include "StateTreeExecutionContext.h"
 
 
-EStateTreeRunStatus FDIStandoffTask::EnterState(
-    FStateTreeExecutionContext& Context,
-    const FStateTreeTransitionResult& Transition) const
+EStateTreeRunStatus FDIStandoffTask::EnterState(FStateTreeExecutionContext& Context,const FStateTreeTransitionResult& Transition) const
 {
     (void)Transition;
 
-    FInstanceDataType& InstanceData =
-        Context.GetInstanceData(*this);
+    FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 
     InstanceData.bResettingSpacing = false;
     InstanceData.bSpacingResetComplete = false;
@@ -23,15 +20,13 @@ EStateTreeRunStatus FDIStandoffTask::EnterState(
 
     InstanceData.HoverActionElapsedTime = 0.0f;
     InstanceData.CurrentHoverActionDuration = 0.0f;
-    InstanceData.CurrentHoverIntent =
-        EDIStandoffHoverIntent::Hold;
+    InstanceData.CurrentHoverIntent = EDIStandoffHoverIntent::Hold;
 
     InstanceData.PreviousMaxWalkSpeed = 0.0f;
     InstanceData.bWalkSpeedOverridden = false;
 
 
-    ADongincheonEnemyBase* Enemy =
-        Cast<ADongincheonEnemyBase>(InstanceData.Pawn);
+    ADongincheonEnemyBase* Enemy = Cast<ADongincheonEnemyBase>(InstanceData.Pawn);
 
     if (!IsValid(Enemy))
     {
@@ -82,33 +77,27 @@ EStateTreeRunStatus FDIStandoffTask::EnterState(
         return EStateTreeRunStatus::Failed;
     }
 
-
     // Standoff에서는 PathFollowing 이동을 끊고
     // 직접 Combat Hover를 소유한다.
     AIController->StopMovement();
     AIController->SetFocus(InstanceData.Target);
 
-
     // Standoff 전용 느린 전투 이동 속도
     if (UCharacterMovementComponent* Movement = Enemy->GetCharacterMovement())
     {
         InstanceData.PreviousMaxWalkSpeed = Movement->MaxWalkSpeed;
-
         InstanceData.bWalkSpeedOverridden = true;
 
         Movement->MaxWalkSpeed = FMath::Max(0.0f, StandoffConfig.StandoffWalkSpeed);
     }
-
-
+    
     // 이번 Standoff 전체 대치 시간 랜덤 결정
     const float MinHold = FMath::Min(StandoffConfig.MinHoldDuration, StandoffConfig.MaxHoldDuration);
     const float MaxHold = FMath::Max(StandoffConfig.MinHoldDuration, StandoffConfig.MaxHoldDuration);
     InstanceData.CurrentHoldDuration = FMath::FRandRange(MinHold, MaxHold);
-
-
+    
     const float DistanceToTarget = FVector::Dist2D(Enemy->GetActorLocation(),InstanceData.Target->GetActorLocation());
-
-
+    
     // 너무 가까운 상태로 들어왔을 때만 최초 Backpedal
     if (DistanceToTarget < StandoffConfig.MinStandoffDistance)
     {
@@ -183,20 +172,24 @@ EStateTreeRunStatus FDIStandoffTask::Tick(FStateTreeExecutionContext& Context,co
 
     ToTarget.Normalize();
 
-
     const float TargetYaw = ToTarget.Rotation().Yaw;
 
+    const float ActorYawBefore = Enemy->GetActorRotation().Yaw;
+    const float ControlYawBefore = AIController->GetControlRotation().Yaw;
+    const float YawError = FMath::FindDeltaAngleDegrees(ActorYawBefore, TargetYaw);
+
+    if (FMath::Abs(YawError) > 15.0f)
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("[STANDOFF_ROT] Actor=%.1f | Control=%.1f | Target=%.1f | Error=%.1f"),
+            ActorYawBefore, ControlYawBefore, TargetYaw, YawError);
+    }
+
     AIController->SetFocus(InstanceData.Target);
-
     AIController->SetControlRotation(FRotator(0.0f,TargetYaw,0.0f));
-
     Enemy->SetActorRotation(FRotator(0.0f,TargetYaw,0.0f));
 
-
-    const float DistanceToTarget =
-        FVector::Dist2D(
-            Enemy->GetActorLocation(),
-            InstanceData.Target->GetActorLocation());
+    const float DistanceToTarget = FVector::Dist2D(Enemy->GetActorLocation(),InstanceData.Target->GetActorLocation());
 
 
     // 1. 최초 Spacing Reset
@@ -430,23 +423,18 @@ EStateTreeRunStatus FDIStandoffTask::Tick(FStateTreeExecutionContext& Context,co
 }
 
 
-void FDIStandoffTask::ExitState(
-    FStateTreeExecutionContext& Context,
-    const FStateTreeTransitionResult& Transition) const
+void FDIStandoffTask::ExitState(FStateTreeExecutionContext& Context,const FStateTreeTransitionResult& Transition) const
 {
     (void)Transition;
 
-    FInstanceDataType& InstanceData =
-        Context.GetInstanceData(*this);
+    FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 
-    ADongincheonEnemyBase* Enemy =
-        Cast<ADongincheonEnemyBase>(InstanceData.Pawn);
+    ADongincheonEnemyBase* Enemy = Cast<ADongincheonEnemyBase>(InstanceData.Pawn);
 
 
     if (IsValid(Enemy))
     {
-        if (AAIController* AIController =
-            Cast<AAIController>(Enemy->GetController()))
+        if (AAIController* AIController = Cast<AAIController>(Enemy->GetController()))
         {
             // Standoff가 소유하던 이동만 종료.
             // Combat Focus 자체는 Combat 루프에서 계속 사용한다.
@@ -454,17 +442,13 @@ void FDIStandoffTask::ExitState(
         }
 
 
-        if (UCharacterMovementComponent* Movement =
-            Enemy->GetCharacterMovement())
+        if (UCharacterMovementComponent* Movement = Enemy->GetCharacterMovement())
         {
             Movement->StopMovementImmediately();
 
-
-            // Standoff에서 낮췄던 속도를 반드시 원복.
             if (InstanceData.bWalkSpeedOverridden)
             {
-                Movement->MaxWalkSpeed =
-                    InstanceData.PreviousMaxWalkSpeed;
+                Movement->MaxWalkSpeed = InstanceData.PreviousMaxWalkSpeed;
             }
         }
     }
@@ -478,8 +462,7 @@ void FDIStandoffTask::ExitState(
 
     InstanceData.HoverActionElapsedTime = 0.0f;
     InstanceData.CurrentHoverActionDuration = 0.0f;
-    InstanceData.CurrentHoverIntent =
-        EDIStandoffHoverIntent::Hold;
+    InstanceData.CurrentHoverIntent = EDIStandoffHoverIntent::Hold;
 
     InstanceData.PreviousMaxWalkSpeed = 0.0f;
     InstanceData.bWalkSpeedOverridden = false;

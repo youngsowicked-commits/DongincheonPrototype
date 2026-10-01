@@ -55,7 +55,15 @@ struct DONGINCHEONPROTOTYPE_API FDIAttackTaskInstanceData
 	//플레이어가 계속 움직여도 다음 공격이 무한정 늦어지지 않도록 재조준에 사용할 수 있는 최대 시간.
 	UPROPERTY(EditAnywhere, Category = "Attack|ReAim", meta = (ClampMin = "0.0"))
 	float ComboReAimMaxTime = 0.15f;
-	
+
+	// 마지막 공격이 끝난 뒤 Recover/Standoff로 넘어가기 전에
+	// 남아 있는 큰 Facing 오차를 자연스럽게 정리한다.
+	UPROPERTY(EditAnywhere, Category = "Attack|ReAim", meta = (ClampMin = "1.0"))
+	float FinalReAimSpeed = 420.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Attack|ReAim", meta = (ClampMin = "0.0"))
+	float FinalReAimMaxTime = 0.45f;
+
 	// Runtime Only
 	UPROPERTY(Transient)
 	TArray<int32> ActiveAttackSequece;
@@ -66,7 +74,9 @@ struct DONGINCHEONPROTOTYPE_API FDIAttackTaskInstanceData
 	//한 타가 끝났고, 다음 타를 시작하기 전에 현재 재조준 중인지.
 	UPROPERTY(Transient)
 	bool bIsReAiming = false;
-
+	
+	UPROPERTY(Transient)
+	bool bIsFinalReAiming = false;
 	
 	//현재 재조준에 사용한 시간.
 	UPROPERTY(Transient)

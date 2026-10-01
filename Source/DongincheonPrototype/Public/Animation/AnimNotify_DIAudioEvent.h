@@ -3,10 +3,10 @@
 #include "CoreMinimal.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
 #include "GameplayTagContainer.h"
-#include "DIAnimNotify_AudioEvent.generated.h"
+#include "AnimNotify_DIAudioEvent.generated.h"
 
 UCLASS(meta = (DisplayName = "DI Audio Event"))
-class DONGINCHEONPROTOTYPE_API UDIAnimNotify_AudioEvent : public UAnimNotify
+class DONGINCHEONPROTOTYPE_API UAnimNotify_DIAudioEvent : public UAnimNotify
 {
 	GENERATED_BODY()
 

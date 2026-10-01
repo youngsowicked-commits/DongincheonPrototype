@@ -132,6 +132,11 @@ void ADIPlayerController::SetHUDContext(EDIHUDContext NewContext)
         return;
     }
 
+    if (CurrentHUDContext != EDIHUDContext::Gameplay)
+    {
+        HUDRootWidget->HideContextActionHint();
+    }
+
     HUDRootWidget->SetHUDContext(CurrentHUDContext);
 }
 
@@ -143,6 +148,59 @@ void ADIPlayerController::SetQTESource(UQTEComponent* InQTEComponent)
     }
 
     HUDRootWidget->SetQTESource(InQTEComponent);
+}
+
+void ADIPlayerController::ShowTutorialPrompt(const FText& Title, const FText& Description)
+{
+    if (IsValid(HUDRootWidget))
+    {
+        HUDRootWidget->ShowTutorialPrompt(Title, Description);
+    }
+}
+
+void ADIPlayerController::SetTutorialProgress(const FText& ProgressText)
+{
+    if (IsValid(HUDRootWidget))
+    {
+        HUDRootWidget->SetTutorialProgress(ProgressText);
+    }
+}
+
+void ADIPlayerController::HideTutorialPrompt()
+{
+    if (IsValid(HUDRootWidget))
+    {
+        HUDRootWidget->HideTutorialPrompt();
+    }
+}
+
+void ADIPlayerController::ShowContextActionHint(const FText& ActionText)
+{
+    if (CurrentHUDContext != EDIHUDContext::Gameplay)
+    {
+        return;
+    }
+
+    if (IsValid(HUDRootWidget))
+    {
+        HUDRootWidget->ShowContextActionHint(ActionText);
+    }
+}
+
+void ADIPlayerController::SetContextActionIcon(const FSlateBrush& InBrush)
+{
+    if (IsValid(HUDRootWidget))
+    {
+        HUDRootWidget->SetContextActionIcon(InBrush);
+    }
+}
+
+void ADIPlayerController::HideContextActionHint()
+{
+    if (IsValid(HUDRootWidget))
+    {
+        HUDRootWidget->HideContextActionHint();
+    }
 }
 
 void ADIPlayerController::ClearQTESource()

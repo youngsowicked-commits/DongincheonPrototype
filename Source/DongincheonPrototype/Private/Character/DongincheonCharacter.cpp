@@ -64,6 +64,8 @@ void ADongincheonCharacter::BeginPlay()
 		GrabComponent->OnGrabAttackReceived.AddDynamic(this,&ADongincheonCharacter::HandleGrabAttackReceived);
 		GrabComponent->OnGrabAttackHitConfirmed.AddDynamic(this,&ADongincheonCharacter::HandleGrabAttackHitConfirmed);
 	}
+	
+	RefreshMovementSpeed();
 }
 
 void ADongincheonCharacter::Tick(float DeltaTime)
@@ -90,6 +92,13 @@ void ADongincheonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		EnhancedInput->BindAction(MoveAction,ETriggerEvent::Triggered,this,&ADongincheonCharacter::HandleMoveInputStartedOrTriggered);
 		EnhancedInput->BindAction(MoveAction,ETriggerEvent::Completed,this,&ADongincheonCharacter::HandleMoveInputCompleted);
 		EnhancedInput->BindAction(MoveAction,ETriggerEvent::Canceled,this,&ADongincheonCharacter::HandleMoveInputCompleted);
+	}
+	
+	if (IsValid(RunAction))
+	{
+		EnhancedInput->BindAction(RunAction,ETriggerEvent::Triggered,this,&ADongincheonCharacter::HandleRunStarted);
+		EnhancedInput->BindAction(RunAction,ETriggerEvent::Completed,this,&ADongincheonCharacter::HandleRunEnded);
+		EnhancedInput->BindAction(RunAction,ETriggerEvent::Canceled,this,&ADongincheonCharacter::HandleRunEnded);
 	}
 	
 	if (IsValid(DodgeAction))
@@ -143,6 +152,10 @@ void ADongincheonCharacter::HandleLockOnSwitch(const FInputActionValue& Value)
 	{
 		return;
 	}
+	
+	if (!IsMovementInputAllowed()) return;
+
+	if (IsValid(GrabComponent) && GrabComponent->GetGrabState() != EDIGrabState::None) return;
 
 	if (!IsValid(TargetingComponent))
 	{
@@ -183,9 +196,14 @@ void ADongincheonCharacter::HandleLockOnStarted(const FInputActionValue& Value)
 		return;
 	}
 	
+	if (!IsMovementInputAllowed()) return;
+
+	if (IsValid(GrabComponent) && GrabComponent->GetGrabState() != EDIGrabState::None) return;
+	
 	if (IsValid(TargetingComponent))
 	{
 		TargetingComponent->TryLockOn();
+		RefreshMovementSpeed();
 	}
 }
 
@@ -196,6 +214,7 @@ void ADongincheonCharacter::HandleLockOnEnded(const FInputActionValue& Value)
 	if (IsValid(TargetingComponent))
 	{
 		TargetingComponent->ClearLockOn();
+		RefreshMovementSpeed();
 	}
 }
 
@@ -215,6 +234,32 @@ void ADongincheonCharacter::HandleMoveInputCompleted(const FInputActionValue& Va
 	(void)Value;
 	
 	CachedMoveInput = FVector2D::ZeroVector;
+}
+
+void ADongincheonCharacter::HandleRunStarted()
+{
+	if (bRunInputHeld || bCombatInputEnabled || IsGameplayInputLocked()) return;
+	bRunInputHeld = true;
+	RefreshMovementSpeed();
+}
+
+void ADongincheonCharacter::HandleRunEnded()
+{
+	if (!bRunInputHeld) return;
+	bRunInputHeld = false;
+	RefreshMovementSpeed();
+}
+
+void ADongincheonCharacter::RefreshMovementSpeed()
+{
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!IsValid(Movement) || bGrabWalkSpeedOverridden) return;
+
+	float TargetSpeed = bRunInputHeld && !bCombatInputEnabled ? ExplorationRunSpeed : ExplorationWalkSpeed;
+	if (bCombatInputEnabled) TargetSpeed = CombatMoveSpeed;
+	if (bCombatInputEnabled && IsValid(TargetingComponent) && TargetingComponent->IsLockedOn()) TargetSpeed = LockOnMoveSpeed;
+
+	Movement->MaxWalkSpeed = TargetSpeed;
 }
 
 bool ADongincheonCharacter::IsGameplayInputLocked() const
@@ -237,7 +282,7 @@ bool ADongincheonCharacter::IsMovementInputAllowed() const
 
 	const bool bGuardLocked = IsValid(CombatComponent) && (CombatComponent->IsGuarding() || CombatComponent->IsGuardBroken());
 
-	return !bPlayerAttackActive && !bPlayerDodging && !bGuardLocked && !bPlayerHitReacting && !bPlayerDeathStarted;
+	return !bPlayerAttackActive && !bPlayerDodging && !bGuardLocked && !IsValid(ActiveGrabStartMontage) && !bPlayerHitReacting && !bPlayerDeathStarted;
 }
 
 void ADongincheonCharacter::SetPresentationInputLocked(bool blocked)
@@ -304,6 +349,8 @@ void ADongincheonCharacter::SetCombatInputEnabled(bool bEnabled)
 
 	if (bEnabled)
 	{
+		bRunInputHeld = false;
+		RefreshMovementSpeed();
 		return;
 	}
 
@@ -326,6 +373,8 @@ void ADongincheonCharacter::SetCombatInputEnabled(bool bEnabled)
 	{
 		TargetingComponent->ClearLockOn();
 	}
+	
+	RefreshMovementSpeed();
 }
 
 bool ADongincheonCharacter::IsCombatInputEnabled() const
@@ -1170,6 +1219,76 @@ void ADongincheonCharacter::EndAttackMoveWindow()
 	AttackMoveWindowTimeRemaining = 0.0f;
 }
 
+bool ADongincheonCharacter::TryAdvanceQueuedCombo()
+{
+    if (!bPlayerAttackActive || QueuedAttackType == EQueuedAttackType::None || bPlayerHitReacting || bPlayerDeathStarted || !IsValid(ActiveAttackMontage) || !IsValid(GetMesh()) || (IsValid(HealthComponent) && HealthComponent->IsDead())) return false;
+
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (!IsValid(AnimInstance) || !AnimInstance->Montage_IsActive(ActiveAttackMontage)) return false;
+
+    bool bAdvanceLight = false;
+    bool bEnterHeavy = false;
+    bool bAdvanceHeavy = false;
+
+    if (ActiveAttackMode == EPlayerAttackMode::LightCombo)
+    {
+        if (QueuedAttackType == EQueuedAttackType::Heavy && HeavyBranches.IsValidIndex(ActiveComboIndex) && !HeavyBranches[ActiveComboIndex].Attacks.IsEmpty()) bEnterHeavy = true;
+        else if (QueuedAttackType == EQueuedAttackType::Light && ActiveComboIndex + 1 < ComboAttacks.Num()) bAdvanceLight = true;
+    }
+    else if (ActiveAttackMode == EPlayerAttackMode::Heavy && QueuedAttackType == EQueuedAttackType::Heavy)
+    {
+        const TArray<FAttackConfig>* HeavyCombo = GetActiveHeavyCombo();
+        if (HeavyCombo && ActiveHeavyComboIndex + 1 < HeavyCombo->Num()) bAdvanceHeavy = true;
+    }
+
+    if (!bAdvanceLight && !bEnterHeavy && !bAdvanceHeavy) return false;
+
+    UAnimMontage* PreviousMontage = ActiveAttackMontage;
+
+    FOnMontageEnded EmptyEndDelegate;
+    AnimInstance->Montage_SetEndDelegate(EmptyEndDelegate,PreviousMontage);
+
+    ActiveAttackMontage = nullptr;
+
+    StopAttackAssistMove();
+    ClearHitStop();
+    if (IsValid(CombatComponent)) CombatComponent->EndAttack();
+
+    AnimInstance->Montage_Stop(0.03f,PreviousMontage);
+
+    if (bEnterHeavy)
+    {
+        ActiveAttackMode = EPlayerAttackMode::Heavy;
+        ActiveHeavyBranchIndex = ActiveComboIndex;
+        ActiveHeavyComboIndex = 0;
+        QueuedAttackType = EQueuedAttackType::None;
+
+        UE_LOG(LogTemp,Warning,TEXT("[COMBO_CHAIN] Light %d -> Heavy 0"),ActiveComboIndex);
+
+        StartPlayerHeavyComboAttack();
+        return true;
+    }
+
+    if (bAdvanceLight)
+    {
+        ++ActiveComboIndex;
+        QueuedAttackType = EQueuedAttackType::None;
+
+        UE_LOG(LogTemp,Warning,TEXT("[COMBO_CHAIN] -> Light %d"),ActiveComboIndex);
+
+        StartPlayerComboAttack();
+        return true;
+    }
+
+    ++ActiveHeavyComboIndex;
+    QueuedAttackType = EQueuedAttackType::None;
+
+    UE_LOG(LogTemp,Warning,TEXT("[COMBO_CHAIN] -> Heavy %d"),ActiveHeavyComboIndex);
+
+    StartPlayerHeavyComboAttack();
+    return true;
+}
+
 const TArray<FAttackConfig>* ADongincheonCharacter::GetActiveHeavyCombo() const
 {
 	// Light 없이 시작한 RMB 체인
@@ -1550,6 +1669,8 @@ void ADongincheonCharacter::StartPlayerGrabAttempt()
 	}
 
 	ActiveGrabStartMontage = GrabConfig.GrabStartMontage;
+	
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement()) Movement->StopMovementImmediately();
 
 	FOnMontageEnded MontageEndedDelegate;
 	MontageEndedDelegate.BindUObject(this,&ADongincheonCharacter::HandleGrabStartMontageEnded);
@@ -1825,9 +1946,9 @@ void ADongincheonCharacter::HandleGrabStateChanged(EDIGrabState PreviousState,ED
 
 		if (NewState == EDIGrabState::None && bGrabWalkSpeedOverridden)
 		{
-			Movement->MaxWalkSpeed = PreGrabWalkSpeed;
 			PreGrabWalkSpeed = 0.0f;
 			bGrabWalkSpeedOverridden = false;
+			RefreshMovementSpeed();
 		}
 	}
 	
@@ -2179,19 +2300,30 @@ void ADongincheonCharacter::StartPlayerDodge()
 
 EPlayerDodgeDirection ADongincheonCharacter::ResolvePlayerDodgeDirection() const
 {
-	//IA_Move기본입력: X = Left, Right , Y = Forward, Backward
-	if (CachedMoveInput.X < -0.1f)
+	if (CachedMoveInput.IsNearlyZero()) return EPlayerDodgeDirection::Backward;
+
+	if (!IsValid(TargetingComponent) || !TargetingComponent->IsLockedOn())
 	{
-		return EPlayerDodgeDirection::Left;
+		if (CachedMoveInput.X < -0.1f) return EPlayerDodgeDirection::Left;
+		if (CachedMoveInput.X > 0.1f) return EPlayerDodgeDirection::Right;
+		return EPlayerDodgeDirection::Backward;
 	}
-	
-	if (CachedMoveInput.X > 0.1f)
-	{
-		return EPlayerDodgeDirection::Right;
-	}
-	
-	//무입력 , W, S 모두 Backstep
-	return EPlayerDodgeDirection::Backward;
+
+	const FRotator CameraYaw(0.0f,GetControlRotation().Yaw,0.0f);
+	const FVector CameraForward = FRotationMatrix(CameraYaw).GetUnitAxis(EAxis::X);
+	const FVector CameraRight = FRotationMatrix(CameraYaw).GetUnitAxis(EAxis::Y);
+	const FVector InputWorldDirection = (CameraForward * CachedMoveInput.Y + CameraRight * CachedMoveInput.X).GetSafeNormal2D();
+
+	const FVector CharacterForward = GetActorForwardVector().GetSafeNormal2D();
+	const FVector CharacterRight = GetActorRightVector().GetSafeNormal2D();
+
+	const float ForwardDot = FVector::DotProduct(InputWorldDirection,CharacterForward);
+	const float RightDot = FVector::DotProduct(InputWorldDirection,CharacterRight);
+
+	if (ForwardDot < -0.35f) return EPlayerDodgeDirection::Backward;
+	if (FMath::Abs(RightDot) < 0.35f) return EPlayerDodgeDirection::Backward;
+
+	return RightDot < 0.0f ? EPlayerDodgeDirection::Left : EPlayerDodgeDirection::Right;
 }
 
 UAnimMontage* ADongincheonCharacter::GetDodgeMontage(EPlayerDodgeDirection Direction) const
@@ -2655,13 +2787,9 @@ void ADongincheonCharacter::StartPlayerHitReact()
 	}
 	
 	bPlayerHitReacting = true;
-	
-	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-	{
-		Movement->StopMovementImmediately();
-		Movement->DisableMovement();
-	}
-	
+
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement()) Movement->StopMovementImmediately();
+
 	if (!IsValid(HitReactMontage))
 	{
 		FinishPlayerHitReact();
@@ -2958,6 +3086,18 @@ void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor,FVector Hi
 		if (IsValid(HeatActionComponent))
 		{
 			HeatActionComponent->AddHeat(HeatGainPerHit);
+		}
+
+		if (IsValid(CharacterAudioComponent))
+		{
+			FDIAudioEventContext AudioContext;
+			AudioContext.Instigator = this;
+			AudioContext.Target = HitActor;
+			AudioContext.Location = HitLocation;
+			AudioContext.SocketName = HitSocketName;
+
+			static const FGameplayTag ImpactLightTag = FGameplayTag::RequestGameplayTag(FName(TEXT("Audio.Combat.Impact.Light")));
+			CharacterAudioComponent->PlayAudioEvent(ImpactLightTag, AudioContext);
 		}
 	}
 
