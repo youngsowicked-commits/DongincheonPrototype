@@ -1,6 +1,7 @@
 ﻿#include "UI/Widgets/DIHealthBarWidgetBase.h"
 
 #include "Components/Image.h"
+#include "Components/DIHeatActionComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
 void UDIHealthBarWidgetBase::SetHealthSource(UHealthComponent* InHealthComponent)
@@ -35,18 +36,55 @@ UHealthComponent* UDIHealthBarWidgetBase::GetHealthSource() const
     return HealthSource;
 }
 
+void UDIHealthBarWidgetBase::SetHeatSource(UDIHeatActionComponent* InHeatComponent)
+{
+    if (HeatSource == InHeatComponent)
+    {
+        EnsureDynamicMaterial();
+        RefreshHeatBar();
+        return;
+    }
+
+    UnbindHeatSource();
+
+    HeatSource = InHeatComponent;
+
+    EnsureDynamicMaterial();
+    BindHeatSource();
+    RefreshHeatBar();
+}
+
+void UDIHealthBarWidgetBase::ClearHeatSource()
+{
+    UnbindHeatSource();
+
+    HeatSource = nullptr;
+
+    RefreshHeatBar();
+}
+
+UDIHeatActionComponent* UDIHealthBarWidgetBase::GetHeatSource() const
+{
+    return HeatSource;
+}
+
 void UDIHealthBarWidgetBase::NativeConstruct()
 {
     Super::NativeConstruct();
 
     EnsureDynamicMaterial();
+
     BindHealthSource();
+    BindHeatSource();
+
     RefreshHealthBar();
+    RefreshHeatBar();
 }
 
 void UDIHealthBarWidgetBase::NativeDestruct()
 {
     UnbindHealthSource();
+    UnbindHeatSource();
 
     Super::NativeDestruct();
 }
@@ -55,30 +93,89 @@ void UDIHealthBarWidgetBase::NativeTick(const FGeometry& MyGeometry, float InDel
 {
     Super::NativeTick(MyGeometry, InDeltaTime);
 
-    if (!bDamageLagAnimating || !IsValid(HPDamageLagMID))
+    // Health Damage Lag
+    if (bDamageLagAnimating && IsValid(HPDamageLagMID))
     {
-        return;
+        if (DamageLagDelayRemaining > 0.0f)
+        {
+            DamageLagDelayRemaining -= InDeltaTime;
+        }
+        else
+        {
+            DamageLagAnimationElapsed += InDeltaTime;
+
+            const float SafeDuration = FMath::Max(
+                DamageLagDuration,
+                KINDA_SMALL_NUMBER
+            );
+
+            const float Alpha = FMath::Clamp(
+                DamageLagAnimationElapsed / SafeDuration,
+                0.0f,
+                1.0f
+            );
+
+            DamageLagCurrentPercent = FMath::Lerp(
+                DamageLagStartPercent,
+                DamageLagTargetPercent,
+                Alpha
+            );
+
+            HPDamageLagMID->SetScalarParameterValue(
+                TEXT("Progress"),
+                DamageLagCurrentPercent
+            );
+
+            if (Alpha >= 1.0f)
+            {
+                DamageLagCurrentPercent = DamageLagTargetPercent;
+                bDamageLagAnimating = false;
+            }
+        }
     }
 
-    if (DamageLagDelayRemaining > 0.0f)
+    // Heat Gauge Smooth Fill
+    if (bHeatAnimating && IsValid(HeatMainMID))
     {
-        DamageLagDelayRemaining -= InDeltaTime;
-        return;
-    }
+        HeatAnimationElapsed += InDeltaTime;
 
-    DamageLagAnimationElapsed += InDeltaTime;
+        const float SafeDuration = FMath::Max(
+            HeatFillDuration,
+            KINDA_SMALL_NUMBER
+        );
 
-    const float SafeDuration = FMath::Max(DamageLagDuration, KINDA_SMALL_NUMBER);
-    const float Alpha = FMath::Clamp(DamageLagAnimationElapsed / SafeDuration, 0.0f, 1.0f);
+        const float Alpha = FMath::Clamp(
+            HeatAnimationElapsed / SafeDuration,
+            0.0f,
+            1.0f
+        );
 
-    DamageLagCurrentPercent = FMath::Lerp(DamageLagStartPercent,DamageLagTargetPercent,Alpha);
+        // SmoothStep: 시작/끝이 딱딱하지 않게 감속/가속
+        const float SmoothAlpha =
+            Alpha * Alpha * (3.0f - 2.0f * Alpha);
 
-    HPDamageLagMID->SetScalarParameterValue(TEXT("Progress"), DamageLagCurrentPercent);
+        HeatCurrentPercent = FMath::Lerp(
+            HeatStartPercent,
+            HeatTargetPercent,
+            SmoothAlpha
+        );
 
-    if (Alpha >= 1.0f)
-    {
-        DamageLagCurrentPercent = DamageLagTargetPercent;
-        bDamageLagAnimating = false;
+        HeatMainMID->SetScalarParameterValue(
+            TEXT("Progress"),
+            HeatCurrentPercent
+        );
+
+        if (Alpha >= 1.0f)
+        {
+            HeatCurrentPercent = HeatTargetPercent;
+
+            HeatMainMID->SetScalarParameterValue(
+                TEXT("Progress"),
+                HeatCurrentPercent
+            );
+
+            bHeatAnimating = false;
+        }
     }
 }
 
@@ -129,6 +226,32 @@ void UDIHealthBarWidgetBase::HandleMaxHealthChanged(float OldMaxHealth,float New
     RefreshHealthBar();
 }
 
+void UDIHealthBarWidgetBase::HandleHeatChanged(float CurrentHeat, float MaxHeat)
+{
+    EnsureDynamicMaterial();
+
+    const float NewPercent = MaxHeat > 0.0f
+        ? FMath::Clamp(CurrentHeat / MaxHeat, 0.0f, 1.0f)
+        : 0.0f;
+
+    if (!IsValid(HeatMainMID))
+    {
+        return;
+    }
+
+    HeatStartPercent = HeatCurrentPercent;
+    HeatTargetPercent = NewPercent;
+    HeatAnimationElapsed = 0.0f;
+
+    bHeatAnimating = !FMath::IsNearlyEqual(HeatStartPercent,HeatTargetPercent);
+
+    if (!bHeatAnimating)
+    {
+        HeatCurrentPercent = HeatTargetPercent;
+        HeatMainMID->SetScalarParameterValue(TEXT("Progress"),HeatCurrentPercent);
+    }
+}
+
 void UDIHealthBarWidgetBase::BindHealthSource()
 {
     if (!IsValid(HealthSource))
@@ -151,6 +274,26 @@ void UDIHealthBarWidgetBase::UnbindHealthSource()
     HealthSource->OnHealthChanged.RemoveDynamic(this,&UDIHealthBarWidgetBase::HandleHealthChanged);
 
     HealthSource->OnMaxHealthChanged.RemoveDynamic(this,&UDIHealthBarWidgetBase::HandleMaxHealthChanged);
+}
+
+void UDIHealthBarWidgetBase::BindHeatSource()
+{
+    if (!IsValid(HeatSource))
+    {
+        return;
+    }
+
+    HeatSource->OnHeatChanged.AddUniqueDynamic(this,&UDIHealthBarWidgetBase::HandleHeatChanged);
+}
+
+void UDIHealthBarWidgetBase::UnbindHeatSource()
+{
+    if (!IsValid(HeatSource))
+    {
+        return;
+    }
+
+    HeatSource->OnHeatChanged.RemoveDynamic(this,&UDIHealthBarWidgetBase::HandleHeatChanged);
 }
 
 void UDIHealthBarWidgetBase::RefreshHealthBar()
@@ -182,6 +325,29 @@ void UDIHealthBarWidgetBase::RefreshHealthBar()
     }
 }
 
+void UDIHealthBarWidgetBase::RefreshHeatBar()
+{
+    EnsureDynamicMaterial();
+
+    const float HeatPercent = IsValid(HeatSource)
+        ? HeatSource->GetHeatNormalized()
+        : 0.0f;
+
+    HeatCurrentPercent = HeatPercent;
+    HeatStartPercent = HeatPercent;
+    HeatTargetPercent = HeatPercent;
+    HeatAnimationElapsed = 0.0f;
+    bHeatAnimating = false;
+
+    if (IsValid(HeatMainMID))
+    {
+        HeatMainMID->SetScalarParameterValue(
+            TEXT("Progress"),
+            HeatCurrentPercent
+        );
+    }
+}
+
 void UDIHealthBarWidgetBase::EnsureDynamicMaterial()
 {
     if (!IsValid(HPMainMID) && IsValid(HPMainImage))
@@ -192,5 +358,10 @@ void UDIHealthBarWidgetBase::EnsureDynamicMaterial()
     if (!IsValid(HPDamageLagMID) && IsValid(HPDamageLagImage))
     {
         HPDamageLagMID = HPDamageLagImage->GetDynamicMaterial();
+    }
+
+    if (!IsValid(HeatMainMID) && IsValid(HeatMainImage))
+    {
+        HeatMainMID = HeatMainImage->GetDynamicMaterial();
     }
 }

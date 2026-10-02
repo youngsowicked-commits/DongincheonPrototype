@@ -8,6 +8,7 @@
 
 class UDIHUDRootWidget;
 class UHealthComponent;
+class UDIHeatActionComponent;
 class UQTEComponent;
 class UTargetingComponent;
 
@@ -89,6 +90,8 @@ private:
 	TSubclassOf<UDIHUDRootWidget> HUDRootWidgetClass;
 	
 	void BindPlayerHealthToHUD();
+	
+	void BindPlayerHeatToHUD();
 	
 	void BindTargetingToHUD();
 

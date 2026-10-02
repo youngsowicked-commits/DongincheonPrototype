@@ -11,6 +11,8 @@
 class UHealthComponent;
 class UCombatComponent;
 class UDIEnemyDefinition;
+class UDICharacterAudioComponent;
+class UDICombatVFXComponent;
 class UAnimMontage;
 class AActor;
 
@@ -32,10 +34,16 @@ public:
 	TObjectPtr<UCombatComponent> CombatComponent;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UDICombatVFXComponent> CombatVFXComponent;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UDIGrabComponent> GrabComponent;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UDIHeatActionComponent> HeatActionComponent;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UDICharacterAudioComponent> CharacterAudioComponent;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Enemy|Data")
 	TObjectPtr<UDIEnemyDefinition> EnemyDefinition = nullptr;

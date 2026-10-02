@@ -47,7 +47,7 @@ public:
 	FOnInteractableChanged OnInteractableChanged;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction")
-	float InteractionRadius = 250.0f;
+	float InteractionRadius = 185.0f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction|Debug")
 	bool bDebugInteraction = false;

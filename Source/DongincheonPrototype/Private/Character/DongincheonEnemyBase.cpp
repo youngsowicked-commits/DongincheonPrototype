@@ -6,8 +6,10 @@
 #include "TimerManager.h"
 #include "Components/HealthComponent.h"
 #include "Components/CombatComponent.h"
+#include "Components/DICombatVFXComponent.h"
 #include "Components/DIGrabComponent.h"
 #include "Components/DIHeatActionComponent.h"
+#include "Components/DICharacterAudioComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "AI/DongincheonAIController.h"
 #include "AI/Data/DIEnemyDefinition.h"
@@ -24,8 +26,10 @@ ADongincheonEnemyBase::ADongincheonEnemyBase()
 
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
 	CombatComponent = CreateDefaultSubobject<UCombatComponent>(TEXT("Combat"));
+	CombatVFXComponent = CreateDefaultSubobject<UDICombatVFXComponent>(TEXT("CombatVFX"));
 	GrabComponent = CreateDefaultSubobject<UDIGrabComponent>(TEXT("Grab"));
 	HeatActionComponent = CreateDefaultSubobject<UDIHeatActionComponent>(TEXT("HeatAction"));
+	CharacterAudioComponent = CreateDefaultSubobject<UDICharacterAudioComponent>(TEXT("CharacterAudioComponent"));
 
 	bUseControllerRotationYaw = false;
 

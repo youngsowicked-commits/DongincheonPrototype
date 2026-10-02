@@ -13,6 +13,7 @@
 #include "Components/DIGrabComponent.h"
 #include "Components/DIHeatActionComponent.h"
 #include "Components/DICharacterAudioComponent.h"
+#include "Components/DICombatVFXComponent.h"
 #include "Gameplay/Data/DIHeatActionDefinition.h"
 #include "NativeGameplayTags.h"
 #include "Components/InteractionComponent.h"
@@ -35,6 +36,7 @@ ADongincheonCharacter::ADongincheonCharacter()
 	
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
 	CombatComponent = CreateDefaultSubobject<UCombatComponent>(TEXT("Combat"));
+	CombatVFXComponent = CreateDefaultSubobject<UDICombatVFXComponent>(TEXT("CombatVFX"));
 	GrabComponent = CreateDefaultSubobject<UDIGrabComponent>(TEXT("GrabComponent"));
 	HeatActionComponent = CreateDefaultSubobject<UDIHeatActionComponent>(TEXT("HeatActionComponent"));
 	TargetingComponent = CreateDefaultSubobject<UTargetingComponent>(TEXT("Targeting"));
@@ -3086,18 +3088,6 @@ void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor,FVector Hi
 		if (IsValid(HeatActionComponent))
 		{
 			HeatActionComponent->AddHeat(HeatGainPerHit);
-		}
-
-		if (IsValid(CharacterAudioComponent))
-		{
-			FDIAudioEventContext AudioContext;
-			AudioContext.Instigator = this;
-			AudioContext.Target = HitActor;
-			AudioContext.Location = HitLocation;
-			AudioContext.SocketName = HitSocketName;
-
-			static const FGameplayTag ImpactLightTag = FGameplayTag::RequestGameplayTag(FName(TEXT("Audio.Combat.Impact.Light")));
-			CharacterAudioComponent->PlayAudioEvent(ImpactLightTag, AudioContext);
 		}
 	}
 

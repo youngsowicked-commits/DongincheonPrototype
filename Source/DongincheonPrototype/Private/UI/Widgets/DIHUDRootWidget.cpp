@@ -9,6 +9,7 @@
 #include "Components/Widget.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/HealthComponent.h"
+#include "Components/DIHeatActionComponent.h"
 #include "GameFramework/PlayerController.h"
 
 void UDIHUDRootWidget::SetPlayerHealthSource(UHealthComponent* InHealthComponent)
@@ -19,6 +20,16 @@ void UDIHUDRootWidget::SetPlayerHealthSource(UHealthComponent* InHealthComponent
 	}
 
 	PlayerHealthBar->SetHealthSource(InHealthComponent);
+}
+
+void UDIHUDRootWidget::SetPlayerHeatSource(UDIHeatActionComponent* InHeatComponent)
+{
+	if (!IsValid(PlayerHealthBar))
+	{
+		return;
+	}
+
+	PlayerHealthBar->SetHeatSource(InHeatComponent);
 }
 
 void UDIHUDRootWidget::SetEnemyHealthSource(UHealthComponent* InHealthComponent)

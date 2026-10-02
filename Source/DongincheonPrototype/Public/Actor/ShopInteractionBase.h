@@ -69,6 +69,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction|Alignment")
 	TObjectPtr<USceneComponent> InteractionPoint;
 	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction|Alignment")
+	bool bAlignInteractorOnEnter = true;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction|Camera")
 	TObjectPtr<UCameraComponent> InteractionCamera;
 	

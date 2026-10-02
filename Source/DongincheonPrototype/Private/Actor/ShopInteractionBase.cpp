@@ -81,26 +81,44 @@ void AShopInteractionBase::Interact_Implementation(AActor* Interactor)
     PreviousViewTarget = PlayerController->GetViewTarget();
 
     Player->SetInteractionInputLocked(true);
+	
+	UE_LOG(
+	LogTemp,
+	Warning,
+	TEXT("[SHOP_POS] ENTER_BEFORE_ALIGN | Player=%s | Location=%s"),
+	*GetNameSafe(Player),
+	*Player->GetActorLocation().ToString()
+);
 
-	if (!AlignInteractorToPoint(Player))
+	if (bAlignInteractorOnEnter)
 	{
-		UE_LOG(LogTemp, Error, TEXT("SHOP FAIL: Alignment failed"));
-
-		Player->SetInteractionInputLocked(false);
-
-		ActiveInteractor = nullptr;
-		PreviousViewTarget = nullptr;
-		InteractionState = EShopInteractionState::Idle;
-
-		if (UInteractionComponent* Interaction = Player->FindComponentByClass<UInteractionComponent>())
+		if (!AlignInteractorToPoint(Player))
 		{
-			Interaction->NotifyInteractionEnded(this);
-		}
+			UE_LOG(LogTemp, Error, TEXT("SHOP FAIL: Alignment failed"));
 
-		return;
+			Player->SetInteractionInputLocked(false);
+
+			ActiveInteractor = nullptr;
+			PreviousViewTarget = nullptr;
+			InteractionState = EShopInteractionState::Idle;
+
+			if (UInteractionComponent* Interaction =
+				Player->FindComponentByClass<UInteractionComponent>())
+			{
+				Interaction->NotifyInteractionEnded(this);
+			}
+
+			return;
+		}
 	}
 
-    UE_LOG(LogTemp, Warning, TEXT("SHOP: Alignment PASS | BlendTime=%.2f"), InteractionCameraBlendTime);
+	UE_LOG(
+	LogTemp,
+	Warning,
+	TEXT("SHOP: Enter PASS | Align=%s | BlendTime=%.2f"),
+	bAlignInteractorOnEnter ? TEXT("TRUE") : TEXT("FALSE"),
+	InteractionCameraBlendTime
+);
 
     PlayerController->SetViewTargetWithBlend(this,InteractionCameraBlendTime,VTBlend_Cubic,2.0f,false);
 
@@ -166,6 +184,15 @@ bool AShopInteractionBase::AlignInteractorToPoint(AActor* Interactor)
 	Interactor->SetActorLocationAndRotation(TargetTransform.GetLocation(),TargetTransform.Rotator(),false,
 		nullptr,ETeleportType::TeleportPhysics
 	);
+	
+	UE_LOG(
+	LogTemp,
+	Warning,
+	TEXT("[SHOP_POS] ALIGN_AFTER_SET | Player=%s | Location=%s | Target=%s"),
+	*GetNameSafe(Interactor),
+	*Interactor->GetActorLocation().ToString(),
+	*TargetTransform.GetLocation().ToString()
+);
 
 	constexpr float AlignmentTolerance = 5.0f;
 
@@ -261,9 +288,25 @@ void AShopInteractionBase::EndShopInteraction()
 		PreviousViewTarget = nullptr;
 		return;
 	}
+	
+	UE_LOG(
+	LogTemp,
+	Warning,
+	TEXT("[SHOP_POS] END_BEFORE_DEACTIVATE | Player=%s | Location=%s"),
+	*GetNameSafe(ActiveInteractor.Get()),
+	*ActiveInteractor->GetActorLocation().ToString()
+);
 
 	InteractionState = EShopInteractionState::Returning;
 	OnShopInteractionDeactivated();
+	
+	UE_LOG(
+	LogTemp,
+	Warning,
+	TEXT("[SHOP_POS] END_AFTER_DEACTIVATE | Player=%s | Location=%s"),
+	*GetNameSafe(ActiveInteractor.Get()),
+	*ActiveInteractor->GetActorLocation().ToString()
+);
 
 	APlayerController* PlayerController = Cast<APlayerController>(ActiveInteractor->GetController());
 
@@ -302,7 +345,7 @@ void AShopInteractionBase::ApplyShopUIInputMode()
 		return;
 	}
 
-	FInputModeUIOnly InputMode;
+	FInputModeGameAndUI InputMode;
 	PlayerController->SetInputMode(InputMode);
 	PlayerController->bShowMouseCursor = true;
 }
@@ -355,6 +398,18 @@ void AShopInteractionBase::FinishShopInteractionReturn()
 
 	// ActiveInteractor를 지우기 전에 Player 보관
 	ADongincheonCharacter* Player = ActiveInteractor.Get();
+	
+	if (IsValid(Player))
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[SHOP_POS] RETURN_FINISH_START | Player=%s | Location=%s"),
+			*GetNameSafe(Player),
+			*Player->GetActorLocation().ToString()
+		);
+	}
+	
 
 	// Input Mode는 ActiveInteractor가 살아 있을 때 복구해야 함
 	RestoreGameplayInputMode();

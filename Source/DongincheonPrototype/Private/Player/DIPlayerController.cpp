@@ -2,6 +2,7 @@
 
 #include "Character/DongincheonCharacter.h"
 #include "Components/HealthComponent.h"
+#include "Components/DIHeatActionComponent.h"
 #include "Components/TargetingComponent.h"
 #include "UI/Widgets/DIHUDRootWidget.h"
 
@@ -40,6 +41,7 @@ void ADIPlayerController::OnPossess(APawn* InPawn)
     Super::OnPossess(InPawn);
 
     BindPlayerHealthToHUD();
+    BindPlayerHeatToHUD();
     BindTargetingToHUD();
 
     if (bCinematicControlLocked)
@@ -73,6 +75,30 @@ void ADIPlayerController::BindPlayerHealthToHUD()
     }
 
     HUDRootWidget->SetPlayerHealthSource(HealthComponent);
+}
+
+void ADIPlayerController::BindPlayerHeatToHUD()
+{
+    if (!IsValid(HUDRootWidget))
+    {
+        return;
+    }
+
+    APawn* ControlledPawn = GetPawn();
+
+    if (!IsValid(ControlledPawn))
+    {
+        return;
+    }
+
+    UDIHeatActionComponent* HeatComponent = ControlledPawn->FindComponentByClass<UDIHeatActionComponent>();
+
+    if (!IsValid(HeatComponent))
+    {
+        return;
+    }
+
+    HUDRootWidget->SetPlayerHeatSource(HeatComponent);
 }
 
 void ADIPlayerController::BindTargetingToHUD()
@@ -384,6 +410,8 @@ void ADIPlayerController::CreateHUD()
     HUDRootWidget->AddToPlayerScreen();
 
     BindPlayerHealthToHUD();
+    
+    BindPlayerHeatToHUD();
 
     BindTargetingToHUD();
 }

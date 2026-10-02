@@ -174,26 +174,13 @@ EStateTreeRunStatus FDIStandoffTask::Tick(FStateTreeExecutionContext& Context,co
 
     const float TargetYaw = ToTarget.Rotation().Yaw;
 
-    const float ActorYawBefore = Enemy->GetActorRotation().Yaw;
-    const float ControlYawBefore = AIController->GetControlRotation().Yaw;
-    const float YawError = FMath::FindDeltaAngleDegrees(ActorYawBefore, TargetYaw);
-
-    if (FMath::Abs(YawError) > 15.0f)
-    {
-        UE_LOG(LogTemp, Warning,
-            TEXT("[STANDOFF_ROT] Actor=%.1f | Control=%.1f | Target=%.1f | Error=%.1f"),
-            ActorYawBefore, ControlYawBefore, TargetYaw, YawError);
-    }
-
     AIController->SetFocus(InstanceData.Target);
     AIController->SetControlRotation(FRotator(0.0f,TargetYaw,0.0f));
     Enemy->SetActorRotation(FRotator(0.0f,TargetYaw,0.0f));
-
+    
     const float DistanceToTarget = FVector::Dist2D(Enemy->GetActorLocation(),InstanceData.Target->GetActorLocation());
-
-
+    
     // 1. 최초 Spacing Reset
-    //
     // Player를 바라보면서 뒤로 걸어서
     // 전투 대치 거리를 한 번 정리한다.
     if (InstanceData.bResettingSpacing)

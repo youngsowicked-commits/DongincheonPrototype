@@ -7,6 +7,7 @@
 #include "DIHUDRootWidget.generated.h"
 
 class UDIHealthBarWidgetBase;
+class UDIHeatActionComponent;
 class UDIQTEPromptWidgetBase;
 class UDIBossIntroWidgetBase;
 class UDITutorialPromptWidgetBase;
@@ -24,6 +25,9 @@ public:
     // Player ------------------------------------------------
     UFUNCTION(BlueprintCallable, Category = "HUD")
     void SetPlayerHealthSource(UHealthComponent* InHealthComponent);
+    
+    UFUNCTION(BlueprintCallable, Category = "HUD|Heat")
+    void SetPlayerHeatSource(UDIHeatActionComponent* InHeatComponent);
     
     // Enemy -------------------------------------------------
     UFUNCTION(BlueprintCallable, Category = "HUD")

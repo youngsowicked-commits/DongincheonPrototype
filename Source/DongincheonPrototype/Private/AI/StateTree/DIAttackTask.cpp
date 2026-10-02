@@ -206,7 +206,7 @@ EStateTreeRunStatus FDIAttackTask::Tick(FStateTreeExecutionContext& Context, con
         return EStateTreeRunStatus::Failed;
     }
 	
-	// 마지막 공격 종료 후 Recover/Standoff 진입 전 Facing 정리
+	// 마지막 공격 종료 후 Recover 진입 전 Facing 정리
 	if (InstanceData.bIsFinalReAiming)
 	{
 		if (!IsValid(InstanceData.Target))
@@ -388,7 +388,8 @@ EStateTreeRunStatus FDIAttackTask::Tick(FStateTreeExecutionContext& Context, con
     ++InstanceData.CurrentSequenceIndex;
 	
 	// 4. Pattern 전체 완료
-	if (!InstanceData.ActiveAttackSequece.IsValidIndex(InstanceData.CurrentSequenceIndex))
+	if (!InstanceData.ActiveAttackSequece.IsValidIndex(
+			InstanceData.CurrentSequenceIndex))
 	{
 		UE_LOG(
 			LogTemp,

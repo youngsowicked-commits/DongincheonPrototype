@@ -25,6 +25,7 @@ class UAnimMontage;
 class UDICharacterAudioComponent;
 class UCameraShakeBase;
 class UAnimNotify_DIComboChainPoint;
+class UDICombatVFXComponent;
 
 struct FInputActionValue;
 
@@ -286,6 +287,9 @@ protected:
 	
 	UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category = "Components",meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UDICharacterAudioComponent> CharacterAudioComponent;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UDICombatVFXComponent> CombatVFXComponent;
 	
 	//Input
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Input")

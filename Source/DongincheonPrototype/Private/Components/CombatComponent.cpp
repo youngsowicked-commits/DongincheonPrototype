@@ -21,8 +21,8 @@ UCombatComponent::UCombatComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-void UCombatComponent::BeginAttack(float DamageAmount,float KnockbackStrength,bool bBreakGuard,float HitTraceRadius,
-	float ImpactFreezeDuration,UAnimMontage* AttackMontage)
+void UCombatComponent::BeginAttack(float DamageAmount, float KnockbackStrength, bool bBreakGuard, float HitTraceRadius,
+                                   float ImpactFreezeDuration, UAnimMontage* AttackMontage)
 {
 	ActiveDamageAmount = FMath::Max(0.0f, DamageAmount);
 	ActiveKnockbackStrength = FMath::Max(0.0f, KnockbackStrength);
@@ -33,21 +33,21 @@ void UCombatComponent::BeginAttack(float DamageAmount,float KnockbackStrength,bo
 
 	HitActorThisAttack.Reset();
 	PendingImpactResult = EDICombatImpactResult::None;
-	
+
 	bAttackActive = true;
 }
 
 void UCombatComponent::EndAttack()
 {
 	bAttackActive = false;
-	
+
 	ActiveDamageAmount = 0.0f;
 	ActiveKnockbackStrength = 0.0f;
 	ActiveHitTraceRadius = 0.0f;
 	ActiveImpactFreezeDuration = 0.0f;
 	ActiveImpactMontage = nullptr;
 	bActiveAttackBreakGuard = false;
-	
+
 	HitActorThisAttack.Reset();
 	PendingImpactResult = EDICombatImpactResult::None;
 }
@@ -59,14 +59,13 @@ void UCombatComponent::BeginGuard()
 	{
 		return;
 	}
-	
+
 	bGuardActive = true;
 }
 
 void UCombatComponent::EndGuard()
 {
 	bGuardActive = false;
-	
 }
 
 void UCombatComponent::RecoverFromGuardBreak()
@@ -128,97 +127,96 @@ void UCombatComponent::ResetAttackHitActors()
 }
 
 
-
-bool UCombatComponent::CollectSocketHitActors(FName SocketName,float TraceRadius,TArray<AActor*>& OutHitActors,
-    bool bDrawDebug) const
+bool UCombatComponent::CollectSocketHitActors(FName SocketName, float TraceRadius, TArray<AActor*>& OutHitActors,
+                                              bool bDrawDebug) const
 {
-    OutHitActors.Reset();
+	OutHitActors.Reset();
 
-    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
 
-    if (!IsValid(OwnerCharacter) || SocketName.IsNone() || TraceRadius <= 0.0f)
-    {
-        return false;
-    }
+	if (!IsValid(OwnerCharacter) || SocketName.IsNone() || TraceRadius <= 0.0f)
+	{
+		return false;
+	}
 
-    USkeletalMeshComponent* Mesh = OwnerCharacter->GetMesh();
+	USkeletalMeshComponent* Mesh = OwnerCharacter->GetMesh();
 
-    if (!IsValid(Mesh))
-    {
-        return false;
-    }
+	if (!IsValid(Mesh))
+	{
+		return false;
+	}
 
-    if (!Mesh->DoesSocketExist(SocketName))
-    {
-        UE_LOG(
-            LogTemp,
-            Warning,
-            TEXT("CombatComponent: Socket/Bone '%s' does not exist on %s"),
-            *SocketName.ToString(),
-            *OwnerCharacter->GetName());
+	if (!Mesh->DoesSocketExist(SocketName))
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("CombatComponent: Socket/Bone '%s' does not exist on %s"),
+			*SocketName.ToString(),
+			*OwnerCharacter->GetName());
 
-        return false;
-    }
+		return false;
+	}
 
-    UWorld* World = GetWorld();
+	UWorld* World = GetWorld();
 
-    if (!IsValid(World))
-    {
-        return false;
-    }
+	if (!IsValid(World))
+	{
+		return false;
+	}
 
-    const FVector SocketLocation = Mesh->GetSocketLocation(SocketName);
+	const FVector SocketLocation = Mesh->GetSocketLocation(SocketName);
 
-    FVector TraceStart = OwnerCharacter->GetActorLocation();
-    TraceStart.Z = SocketLocation.Z;
+	FVector TraceStart = OwnerCharacter->GetActorLocation();
+	TraceStart.Z = SocketLocation.Z;
 
-    TraceStart += OwnerCharacter->GetActorForwardVector() * 20.0f;
+	TraceStart += OwnerCharacter->GetActorForwardVector() * 20.0f;
 
-    const FVector TraceEnd = SocketLocation;
+	const FVector TraceEnd = SocketLocation;
 
-    FCollisionObjectQueryParams ObjectQueryParams;
-    ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
+	FCollisionObjectQueryParams ObjectQueryParams;
+	ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
 
-    FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(CombatSocketHitTrace),false,OwnerCharacter);
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(CombatSocketHitTrace), false, OwnerCharacter);
 
-    const FCollisionShape HitShape = FCollisionShape::MakeSphere(TraceRadius);
+	const FCollisionShape HitShape = FCollisionShape::MakeSphere(TraceRadius);
 
-    TArray<FHitResult> HitResults;
+	TArray<FHitResult> HitResults;
 
-    World->SweepMultiByObjectType(HitResults,TraceStart,TraceEnd,FQuat::Identity,ObjectQueryParams,
-        HitShape,QueryParams);
+	World->SweepMultiByObjectType(HitResults, TraceStart, TraceEnd, FQuat::Identity, ObjectQueryParams,
+	                              HitShape, QueryParams);
 
-    for (const FHitResult& Hit : HitResults)
-    {
-        AActor* HitActor = Hit.GetActor();
+	for (const FHitResult& Hit : HitResults)
+	{
+		AActor* HitActor = Hit.GetActor();
 
-        if (!IsValidCombatTarget(HitActor))
-        {
-            continue;
-        }
+		if (!IsValidCombatTarget(HitActor))
+		{
+			continue;
+		}
 
-        if (OutHitActors.Contains(HitActor))
-        {
-            continue;
-        }
+		if (OutHitActors.Contains(HitActor))
+		{
+			continue;
+		}
 
-        OutHitActors.Add(HitActor);
-    }
+		OutHitActors.Add(HitActor);
+	}
 
-    if (bDrawDebug)
-    {
-        const FColor DebugColor = OutHitActors.IsEmpty() ? FColor::Red : FColor::Green;
+	if (bDrawDebug)
+	{
+		const FColor DebugColor = OutHitActors.IsEmpty() ? FColor::Red : FColor::Green;
 
-        DrawDebugLine(World,TraceStart,TraceEnd,DebugColor,false,1.0f,0,2.0f);
+		DrawDebugLine(World, TraceStart, TraceEnd, DebugColor, false, 1.0f, 0, 2.0f);
 
-        DrawDebugSphere(World,TraceStart,TraceRadius,16,DebugColor,false,1.0f,0,
-            1.5f);
+		DrawDebugSphere(World, TraceStart, TraceRadius, 16, DebugColor, false, 1.0f, 0,
+		                1.5f);
 
-        DrawDebugSphere(World,TraceEnd,TraceRadius,16,DebugColor,false,1.0f,0,
-            1.5f);
-    }
+		DrawDebugSphere(World, TraceEnd, TraceRadius, 16, DebugColor, false, 1.0f, 0,
+		                1.5f);
+	}
 
-    return !OutHitActors.IsEmpty();
+	return !OutHitActors.IsEmpty();
 }
 
 
@@ -226,34 +224,34 @@ bool UCombatComponent::CollectSocketHitActors(FName SocketName,float TraceRadius
 bool UCombatComponent::IsValidCombatTarget(AActor* Target) const
 {
 	AActor* Owner = GetOwner();
-	
+
 	if (!IsValid(Owner))
 	{
 		return false;
 	}
-	
+
 	if (!IsValid(Target))
 	{
 		return false;
 	}
-	
+
 	if (Target == Owner)
 	{
 		return false;
 	}
-	
+
 	const UHealthComponent* TargetHealth = Target->FindComponentByClass<UHealthComponent>();
-	
+
 	if (!IsValid(TargetHealth))
 	{
 		return false;
 	}
-	
+
 	if (TargetHealth->IsDead())
 	{
 		return false;
 	}
-	
+
 	return true;
 }
 
@@ -261,26 +259,26 @@ bool UCombatComponent::IsValidCombatTarget(AActor* Target) const
 float UCombatComponent::DealDamage(AActor* Target, float DamageAmount)
 {
 	AActor* Owner = GetOwner();
-	
+
 	if (!IsValidCombatTarget(Target) || DamageAmount <= 0.0f)
 	{
 		return 0.0f;
 	}
-	
+
 	AController* InstigatorController = nullptr;
-	
+
 	if (const APawn* OwnerPawn = Cast<APawn>(Owner))
 	{
 		InstigatorController = OwnerPawn->GetController();
 	}
-	
+
 	TSubclassOf<UDamageType> DamageType = DamageTypeClass;
-	
+
 	if (!DamageType)
 	{
 		DamageType = UDamageType::StaticClass();
 	}
-	
+
 	return UGameplayStatics::ApplyDamage(
 		Target, DamageAmount, InstigatorController, Owner, DamageType);
 }
@@ -292,41 +290,41 @@ void UCombatComponent::ApplyKnockback(AActor* Target, float KnockbackStrength) c
 	{
 		return;
 	}
-	
+
 	ACharacter* TargetCharacter = Cast<ACharacter>(Target);
-	
+
 	if (!IsValid(TargetCharacter))
 	{
 		return;
 	}
-	
+
 	UCharacterMovementComponent* Movement = TargetCharacter->GetCharacterMovement();
-	
+
 	if (!IsValid(Movement))
 	{
 		return;
 	}
-	
+
 	const AActor* Owner = GetOwner();
-	
+
 	if (!IsValid(Owner))
 	{
 		return;
 	}
-	
+
 	FVector KnockbackDirection = TargetCharacter->GetActorLocation() - Owner->GetActorLocation();
-	
+
 	KnockbackDirection.Z = 0.0f;
-	
+
 	if (!KnockbackDirection.Normalize())
 	{
 		KnockbackDirection = Owner->GetActorForwardVector();
-		
+
 		KnockbackDirection.Z = 0.0f;
-		
+
 		KnockbackDirection.Normalize();
 	}
-	
+
 	Movement->AddImpulse(KnockbackDirection * KnockbackStrength, true);
 }
 
@@ -345,7 +343,7 @@ void UCombatComponent::PauseCurrentImpactMontage(AActor* Actor)
 	{
 		return;
 	}
-	
+
 	if (Actor == GetOwner())
 	{
 		UE_LOG(
@@ -353,8 +351,10 @@ void UCombatComponent::PauseCurrentImpactMontage(AActor* Actor)
 			Warning,
 			TEXT("[IMPACT_ATTACK_MONTAGE] Stored=%s | IsActive=%s | IsPlaying=%s | Current=%s"),
 			*GetNameSafe(ActiveImpactMontage),
-			IsValid(ActiveImpactMontage) && AnimInstance->Montage_IsActive(ActiveImpactMontage) ? TEXT("TRUE") : TEXT("FALSE"),
-			IsValid(ActiveImpactMontage) && AnimInstance->Montage_IsPlaying(ActiveImpactMontage) ? TEXT("TRUE") : TEXT("FALSE"),
+			IsValid(ActiveImpactMontage) && AnimInstance->Montage_IsActive(ActiveImpactMontage) ? TEXT("TRUE") : TEXT(
+				"FALSE"),
+			IsValid(ActiveImpactMontage) && AnimInstance->Montage_IsPlaying(ActiveImpactMontage) ? TEXT("TRUE") : TEXT(
+				"FALSE"),
 			*GetNameSafe(AnimInstance->GetCurrentActiveMontage()));
 	}
 
@@ -368,13 +368,13 @@ void UCombatComponent::PauseCurrentImpactMontage(AActor* Actor)
 	{
 		Montage = AnimInstance->GetCurrentActiveMontage();
 	}
-	
+
 	UE_LOG(
-	LogTemp,
-	Warning,
-	TEXT("[IMPACT_FREEZE] PAUSE | Actor=%s | Montage=%s"),
-	*GetNameSafe(Actor),
-	*GetNameSafe(Montage));
+		LogTemp,
+		Warning,
+		TEXT("[IMPACT_FREEZE] PAUSE | Actor=%s | Montage=%s"),
+		*GetNameSafe(Actor),
+		*GetNameSafe(Montage));
 
 	if (!IsValid(Montage))
 	{
@@ -545,15 +545,15 @@ void UCombatComponent::PauseReadyImpactVictims()
 void UCombatComponent::StartImpactFreeze(AActor* HitActor, float KnockbackStrength, EDICombatImpactResult ImpactResult)
 {
 	AActor* Attacker = GetOwner();
-	
+
 	UE_LOG(
-	LogTemp,
-	Warning,
-	TEXT("[IMPACT_FREEZE] START | Attacker=%s | Victim=%s | Duration=%.3f | Result=%d"),
-	*GetNameSafe(Attacker),
-	*GetNameSafe(HitActor),
-	ActiveImpactFreezeDuration,
-	static_cast<int32>(ImpactResult));
+		LogTemp,
+		Warning,
+		TEXT("[IMPACT_FREEZE] START | Attacker=%s | Victim=%s | Duration=%.3f | Result=%d"),
+		*GetNameSafe(Attacker),
+		*GetNameSafe(HitActor),
+		ActiveImpactFreezeDuration,
+		static_cast<int32>(ImpactResult));
 
 	if (!IsValid(Attacker) || !IsValid(HitActor) || ImpactResult == EDICombatImpactResult::None)
 	{
@@ -627,12 +627,12 @@ void UCombatComponent::StartImpactFreeze(AActor* HitActor, float KnockbackStreng
 void UCombatComponent::FinishImpactFreeze()
 {
 	UE_LOG(
-	LogTemp,
-	Warning,
-	TEXT("[IMPACT_FREEZE] FINISH | PausedMontages=%d | PendingKnockbacks=%d"),
-	PausedImpactMontages.Num(),
-	PendingImpactKnockbacks.Num());
-	
+		LogTemp,
+		Warning,
+		TEXT("[IMPACT_FREEZE] FINISH | PausedMontages=%d | PendingKnockbacks=%d"),
+		PausedImpactMontages.Num(),
+		PendingImpactKnockbacks.Num());
+
 	bImpactFreezeActive = false;
 	bImpactVictimPauseRetryScheduled = false;
 	bImpactVictimReadyPauseScheduled = false;
@@ -656,7 +656,7 @@ void UCombatComponent::FinishImpactFreeze()
 	PausedImpactMontages.Reset();
 
 	for (const FPendingImpactKnockback& PendingKnockback :
-		PendingImpactKnockbacks)
+	     PendingImpactKnockbacks)
 	{
 		AActor* Target = PendingKnockback.Target.Get();
 
@@ -674,86 +674,89 @@ void UCombatComponent::FinishImpactFreeze()
 	PendingImpactKnockbacks.Reset();
 }
 
-bool UCombatComponent::PerformSocketHitTrace(FName SocketName, float TraceRadius, TArray<AActor*>& OutHitActors, bool bDrawDebug)
+bool UCombatComponent::PerformSocketHitTrace(FName SocketName, float TraceRadius, TArray<AActor*>& OutHitActors,
+                                             bool bDrawDebug)
 {
 	return CollectSocketHitActors(SocketName, TraceRadius, OutHitActors, bDrawDebug);
 }
 
 bool UCombatComponent::ProcessHitActor(AActor* HitActor, const FVector& HitLocation, FName SocketName)
 {
-    if (!IsValid(HitActor))
-    {
-        return false;
-    }
+	if (!IsValid(HitActor))
+	{
+		return false;
+	}
 
-    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
 
-    if (!IsValid(OwnerCharacter))
-    {
-        return false;
-    }
+	if (!IsValid(OwnerCharacter))
+	{
+		return false;
+	}
 
-    if (HitActor == OwnerCharacter)
-    {
-        return false;
-    }
+	if (HitActor == OwnerCharacter)
+	{
+		return false;
+	}
 
-    if (!IsValidCombatTarget(HitActor))
-    {
-        return false;
-    }
+	if (!IsValidCombatTarget(HitActor))
+	{
+		return false;
+	}
 
-    const bool bOwnerIsPlayer = OwnerCharacter->IsA<ADongincheonCharacter>();
-    const bool bOwnerIsEnemy = OwnerCharacter->IsA<ADongincheonEnemyBase>();
-    const bool bTargetIsPlayer = HitActor->IsA<ADongincheonCharacter>();
-    const bool bTargetIsEnemy = HitActor->IsA<ADongincheonEnemyBase>();
+	const bool bOwnerIsPlayer = OwnerCharacter->IsA<ADongincheonCharacter>();
+	const bool bOwnerIsEnemy = OwnerCharacter->IsA<ADongincheonEnemyBase>();
+	const bool bTargetIsPlayer = HitActor->IsA<ADongincheonCharacter>();
+	const bool bTargetIsEnemy = HitActor->IsA<ADongincheonEnemyBase>();
 
-    const bool bValidCombatTarget = (bOwnerIsPlayer && bTargetIsEnemy) || (bOwnerIsEnemy && bTargetIsPlayer);
+	const bool bValidCombatTarget = (bOwnerIsPlayer && bTargetIsEnemy) || (bOwnerIsEnemy && bTargetIsPlayer);
 
-    if (!bValidCombatTarget)
-    {
-        return false;
-    }
+	if (!bValidCombatTarget)
+	{
+		return false;
+	}
 
-    const TWeakObjectPtr<AActor> HitActorPtr(HitActor);
+	const TWeakObjectPtr<AActor> HitActorPtr(HitActor);
 
-    if (HitActorThisAttack.Contains(HitActorPtr))
-    {
-        return false;
-    }
+	if (HitActorThisAttack.Contains(HitActorPtr))
+	{
+		return false;
+	}
 
-    HitActorThisAttack.Add(HitActorPtr);
+	HitActorThisAttack.Add(HitActorPtr);
 
-    PendingImpactResult = EDICombatImpactResult::Hit;
+	PendingImpactResult = EDICombatImpactResult::Hit;
 
-    float AppliedDamage = 0.0f;
+	float AppliedDamage = 0.0f;
 
-    if (ActiveDamageAmount > 0.0f)
-    {
-        AppliedDamage = DealDamage(HitActor, ActiveDamageAmount);
-    }
+	if (ActiveDamageAmount > 0.0f)
+	{
+		AppliedDamage = DealDamage(HitActor, ActiveDamageAmount);
+	}
 
-    const EDICombatImpactResult ImpactResult = PendingImpactResult;
+	const EDICombatImpactResult ImpactResult = PendingImpactResult;
 
-    const bool bValidImpact =
-        ImpactResult == EDICombatImpactResult::GuardHit ||
-        ImpactResult == EDICombatImpactResult::GuardBreak ||
-        (ImpactResult == EDICombatImpactResult::Hit && AppliedDamage > 0.0f);
+	const bool bValidImpact =
+		ImpactResult == EDICombatImpactResult::GuardHit ||
+		ImpactResult == EDICombatImpactResult::GuardBreak ||
+		(ImpactResult == EDICombatImpactResult::Hit && AppliedDamage > 0.0f);
 
-    if (bValidImpact)
-    {
-        const float ImpactKnockbackStrength = ImpactResult == EDICombatImpactResult::Hit ? ActiveKnockbackStrength : 0.0f;
+	if (bValidImpact)
+	{
+		const float ImpactKnockbackStrength = ImpactResult == EDICombatImpactResult::Hit
+			                                      ? ActiveKnockbackStrength
+			                                      : 0.0f;
 
-        StartImpactFreeze(HitActor, ImpactKnockbackStrength, ImpactResult);
+		StartImpactFreeze(HitActor, ImpactKnockbackStrength, ImpactResult);
 
-        OnImpactConfirmed.Broadcast(HitActor,HitLocation,SocketName,AppliedDamage,ImpactResult);
-    }
+		OnImpactConfirmed.Broadcast(HitActor, HitLocation, SocketName, AppliedDamage, ImpactResult);
+	}
 
-    OnHitConfirmed.Broadcast(HitActor,HitLocation,SocketName,AppliedDamage);
+	OnHitConfirmed.Broadcast(HitActor, HitLocation, SocketName, AppliedDamage);
 
-    PendingImpactResult = EDICombatImpactResult::None;
+	PendingImpactResult = EDICombatImpactResult::None;
 
-    return true;
+	return true;
 }
 
 bool UCombatComponent::ProcessSocketHit(FName SocketName)
@@ -792,7 +795,7 @@ bool UCombatComponent::ProcessSocketHit(FName SocketName)
 
 	for (AActor* HitActor : HitActors)
 	{
-		if (ProcessHitActor(HitActor,HitLocation,SocketName))
+		if (ProcessHitActor(HitActor, HitLocation, SocketName))
 		{
 			bAnyNewHit = true;
 		}
@@ -801,119 +804,111 @@ bool UCombatComponent::ProcessSocketHit(FName SocketName)
 	return bAnyNewHit;
 }
 
-bool UCombatComponent::ProcessSocketTrajectoryHit(
-    FName SocketName,
-    const FVector& TraceStart,
-    const FVector& TraceEnd)
+bool UCombatComponent::ProcessSocketTrajectoryHit(FName SocketName, const FVector& TraceStart, const FVector& TraceEnd)
 {
-    if (!bAttackActive ||
-        SocketName.IsNone())
-    {
-        return false;
-    }
+	if (!bAttackActive ||
+		SocketName.IsNone())
+	{
+		return false;
+	}
 
-    ACharacter* OwnerCharacter =
-        Cast<ACharacter>(GetOwner());
+	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
 
-    if (!IsValid(OwnerCharacter))
-    {
-        return false;
-    }
+	if (!IsValid(OwnerCharacter))
+	{
+		return false;
+	}
 
-    UWorld* World = GetWorld();
+	UWorld* World = GetWorld();
 
-    if (!IsValid(World))
-    {
-        return false;
-    }
+	if (!IsValid(World))
+	{
+		return false;
+	}
 
-    const float TraceRadius =
-        ActiveHitTraceRadius > 0.0f
-        ? ActiveHitTraceRadius
-        : DefaultHitTraceRadius;
+	const float TraceRadius = ActiveHitTraceRadius > 0.0f ? ActiveHitTraceRadius : DefaultHitTraceRadius;
 
-    if (TraceRadius <= 0.0f)
-    {
-        return false;
-    }
+	if (TraceRadius <= 0.0f)
+	{
+		return false;
+	}
 
-    FCollisionObjectQueryParams ObjectQueryParams;
-    ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
+	FCollisionObjectQueryParams ObjectQueryParams;
+	ObjectQueryParams.AddObjectTypesToQuery(ECC_Pawn);
 
-    FCollisionQueryParams QueryParams(
-        SCENE_QUERY_STAT(CombatSocketTrajectoryHit),
-        false,
-        OwnerCharacter);
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(CombatSocketTrajectoryHit), false, OwnerCharacter);
 
-    const FCollisionShape HitShape =
-        FCollisionShape::MakeSphere(TraceRadius);
+	const FCollisionShape HitShape = FCollisionShape::MakeSphere(TraceRadius);
 
-    TArray<FHitResult> HitResults;
+	TArray<FHitResult> HitResults;
 
-    World->SweepMultiByObjectType(
-        HitResults,
-        TraceStart,
-        TraceEnd,
-        FQuat::Identity,
-        ObjectQueryParams,
-        HitShape,
-        QueryParams);
+	World->SweepMultiByObjectType(
+		HitResults,
+		TraceStart,
+		TraceEnd,
+		FQuat::Identity,
+		ObjectQueryParams,
+		HitShape,
+		QueryParams);
 
-    bool bAnyNewHit = false;
+	bool bAnyNewHit = false;
 
-    for (const FHitResult& Hit : HitResults)
-    {
-        AActor* HitActor = Hit.GetActor();
+	for (const FHitResult& Hit : HitResults)
+	{
+		AActor* HitActor = Hit.GetActor();
 
-        const FVector HitLocation =
-            Hit.ImpactPoint.IsNearlyZero()
-            ? TraceEnd
-            : Hit.ImpactPoint;
+		const FVector HitLocation = Hit.ImpactPoint.IsNearlyZero() ? TraceEnd : Hit.ImpactPoint;
 
-        if (ProcessHitActor(
-            HitActor,
-            HitLocation,
-            SocketName))
-        {
-            bAnyNewHit = true;
-        }
-    }
+		DrawDebugSphere(
+			GetWorld(),
+			HitLocation,
+			5.0f,
+			12,
+			FColor::Cyan,
+			false,
+			1.0f);
 
-    if (bDrawHitDebug)
-    {
-        const FColor DebugColor =
-            bAnyNewHit
-            ? FColor::Green
-            : FColor::Red;
+		if (ProcessHitActor(HitActor, HitLocation, SocketName))
+		{
+			bAnyNewHit = true;
+		}
+	}
 
-        DrawDebugLine(
-            World,
-            TraceStart,
-            TraceEnd,
-            DebugColor,
-            false,
-            0.15f,
-            0,
-            2.0f);
+	if (bDrawHitDebug)
+	{
+		const FColor DebugColor =
+			bAnyNewHit
+				? FColor::Green
+				: FColor::Red;
 
-        DrawDebugSphere(
-            World,
-            TraceStart,
-            TraceRadius,
-            12,
-            DebugColor,
-            false,
-            0.15f);
+		DrawDebugLine(
+			World,
+			TraceStart,
+			TraceEnd,
+			DebugColor,
+			false,
+			0.15f,
+			0,
+			2.0f);
 
-        DrawDebugSphere(
-            World,
-            TraceEnd,
-            TraceRadius,
-            12,
-            DebugColor,
-            false,
-            0.15f);
-    }
+		DrawDebugSphere(
+			World,
+			TraceStart,
+			TraceRadius,
+			12,
+			DebugColor,
+			false,
+			0.15f);
 
-    return bAnyNewHit;
+		DrawDebugSphere(
+			World,
+			TraceEnd,
+			TraceRadius,
+			12,
+			DebugColor,
+			false,
+			0.15f);
+	}
+
+	return bAnyNewHit;
 }

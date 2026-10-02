@@ -3,6 +3,7 @@
 #include "Audio/DICharacterAudioProfile.h"
 #include "Components/AudioComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/HealthComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
@@ -13,6 +14,94 @@ DEFINE_LOG_CATEGORY_STATIC(LogDIAudio, Log, All);
 UDICharacterAudioComponent::UDICharacterAudioComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+}
+
+void UDICharacterAudioComponent::BeginPlay()
+{
+	Super::BeginPlay();
+
+	AActor* Owner = GetOwner();
+	if (!IsValid(Owner)) return;
+
+	if (UCombatComponent* CombatComponent = Owner->FindComponentByClass<UCombatComponent>())
+	{
+		CombatComponent->OnImpactConfirmed.AddUniqueDynamic(this,&UDICharacterAudioComponent::HandleImpactConfirmed);
+	}
+
+	if (UHealthComponent* HealthComponent = Owner->FindComponentByClass<UHealthComponent>())
+	{
+		HealthComponent->OnDamaged.AddUniqueDynamic(this,&UDICharacterAudioComponent::HandleHealthDamaged);
+		HealthComponent->OnDeath.AddUniqueDynamic(this,&UDICharacterAudioComponent::HandleHealthDeath);
+	}
+}
+
+void UDICharacterAudioComponent::HandleImpactConfirmed(AActor* HitActor, FVector HitLocation, FName HitSocketName,
+	float AppliedDamage, EDICombatImpactResult ImpactResult)
+{
+	if (!IsValid(HitActor) || ImpactResult == EDICombatImpactResult::None) return;
+	if (ImpactResult == EDICombatImpactResult::Hit && AppliedDamage <= 0.0f) return;
+
+	FGameplayTag EventTag;
+
+	switch (ImpactResult)
+	{
+	case EDICombatImpactResult::Hit:
+		EventTag = FGameplayTag::RequestGameplayTag(FName(TEXT("Audio.Combat.Impact.Light")));
+		break;
+
+	case EDICombatImpactResult::GuardHit:
+		EventTag = FGameplayTag::RequestGameplayTag(FName(TEXT("Audio.Combat.Impact.Guard")));
+		break;
+
+	case EDICombatImpactResult::GuardBreak:
+		EventTag = FGameplayTag::RequestGameplayTag(FName(TEXT("Audio.Combat.Impact.GuardBreak")));
+		break;
+
+	default:
+		return;
+	}
+
+	FDIAudioEventContext Context;
+	Context.Instigator = GetOwner();
+	Context.Target = HitActor;
+	Context.Location = HitLocation;
+	Context.SocketName = HitSocketName;
+
+	PlayAudioEvent(EventTag, Context);
+}
+
+void UDICharacterAudioComponent::HandleHealthDamaged(float DamageAmount,AActor* DamageCauser)
+{
+	if (DamageAmount <= 0.0f) return;
+
+	AActor* Owner = GetOwner();
+	if (!IsValid(Owner)) return;
+
+	FDIAudioEventContext Context;
+	Context.Instigator = DamageCauser;
+	Context.Target = Owner;
+	Context.Location = Owner->GetActorLocation();
+
+	static const FGameplayTag HitTag =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Audio.Character.Hit")));
+
+	PlayAudioEvent(HitTag,Context);
+}
+
+void UDICharacterAudioComponent::HandleHealthDeath(AActor* DamageCauser)
+{
+	AActor* Owner = GetOwner();
+	if (!IsValid(Owner)) return;
+
+	FDIAudioEventContext Context;
+	Context.Instigator = DamageCauser;
+	Context.Target = Owner;
+	Context.Location = Owner->GetActorLocation();
+
+	static const FGameplayTag DeathTag =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Audio.Character.Death")));
+
+	PlayAudioEvent(DeathTag,Context);
 }
 
 UAudioComponent* UDICharacterAudioComponent::PlayAudioEvent(FGameplayTag EventTag, const FDIAudioEventContext& Context)

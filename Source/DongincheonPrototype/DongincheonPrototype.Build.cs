@@ -11,7 +11,7 @@ public class DongincheonPrototype : ModuleRules
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "StateTreeModule", "UMG", "SlateCore",
-			"LevelSequence"
+			"LevelSequence", "Niagara"
 			
 		});
 
@@ -20,7 +20,7 @@ public class DongincheonPrototype : ModuleRules
 			"AIModule",
 			"GameplayStateTreeModule",
 			"GameplayTags",
-			"MovieScene"
+			"MovieScene", "Niagara"
 		});
 
 		// Uncomment if you are using Slate UI

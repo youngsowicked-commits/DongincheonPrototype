@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Components/CombatComponent.h"
 #include "GameplayTagContainer.h"
 #include "Audio/DIAudioTypes.h"
 #include "DICharacterAudioComponent.generated.h"
@@ -26,11 +27,21 @@ public:
 	bool HasAudioEvent(FGameplayTag EventTag) const;
 
 protected:
+	virtual void BeginPlay() override;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Audio")
 	TObjectPtr<UDICharacterAudioProfile> AudioProfile = nullptr;
 
 private:
-	USoundBase* SelectVariant(const FDIAudioEventDefinition& Definition) const;
+	UFUNCTION()
+	void HandleImpactConfirmed(AActor* HitActor, FVector HitLocation, FName HitSocketName, float AppliedDamage, EDICombatImpactResult ImpactResult);
+	
+	UFUNCTION()
+	void HandleHealthDamaged(float DamageAmount,AActor* DamageCauser);
 
+	UFUNCTION()
+	void HandleHealthDeath(AActor* DamageCauser);
+
+	USoundBase* SelectVariant(const FDIAudioEventDefinition& Definition) const;
 	USceneComponent* ResolveOwnerAttachComponent() const;
 };
