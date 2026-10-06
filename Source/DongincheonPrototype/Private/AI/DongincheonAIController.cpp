@@ -351,38 +351,32 @@ bool ADongincheonAIController::CanUseHitReact(float CooldownDuration) const
 void ADongincheonAIController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
-	
+
 	CombatTarget.Reset();
 	LastGuardTime = -1.0;
-	LastHitReactTime = -1.0;
-	
+
 	if (!IsValid(InPawn))
 	{
-		UE_LOG(LogTemp,Error,TEXT("01B : OnPossess failed - Pawn is invalid"));
-		
+		UE_LOG(LogTemp, Error, TEXT("01B: OnPossess failed - Pawn is invalid"));
 		return;
 	}
-	
+
 	if (!StateTreeComponent)
 	{
-		UE_LOG(LogTemp,Error,TEXT("01B: OnPossess failed - StateTreeComponent i NULL"));
-		
+		UE_LOG(LogTemp, Error, TEXT("01B: OnPossess failed - StateTreeComponent is NULL"));
 		return;
 	}
-	
-	UE_LOG(LogTemp,Warning,TEXT("01B: OnPossess | Controller=%s | Pawn=%s"), *GetNameSafe(this), *GetNameSafe(InPawn));
-	
-	if (const ADongincheonEnemyBase* Enemy = Cast<ADongincheonEnemyBase>(InPawn))
-	{
-		if (!Enemy->ShouldAutoStartStateTreeOnPossess())
-		{
-			UE_LOG(LogTemp,Warning,TEXT("01B: StateTree start DEFERRED | Pawn=%s"), *GetNameSafe(InPawn));
-			
-			return;
-		}
-	}
-	
-	StateTreeComponent->StartLogic();
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("01B: OnPossess | Controller=%s | Pawn=%s | StateTree DEFERRED"),
+		*GetNameSafe(this),
+		*GetNameSafe(InPawn));
+
+	// 중요:
+	// Possess는 Controller/Pawn 연결만 담당한다.
+	// Combat StateTree는 ADIBattleEncounter::StartCombat()에서만 시작한다.
 }
 
 void ADongincheonAIController::StartStateTreeLogic()

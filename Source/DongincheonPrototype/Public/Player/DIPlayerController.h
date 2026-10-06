@@ -11,6 +11,7 @@ class UHealthComponent;
 class UDIHeatActionComponent;
 class UQTEComponent;
 class UTargetingComponent;
+class ADongincheonCharacter;
 
 UCLASS()
 class DONGINCHEONPROTOTYPE_API ADIPlayerController : public APlayerController
@@ -56,6 +57,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HUD|ContextHint")
 	void HideContextActionHint();
 	
+	//Heat Action Hint --------------------------------
+	UFUNCTION(BlueprintCallable, Category = "HUD|HeatAction")
+	void ShowHeatActionPrompt();
+
+	UFUNCTION(BlueprintCallable, Category = "HUD|HeatAction")
+	void HideHeatActionPrompt();
+	
 	// Boss Intro ----------------------------------------------
 	UFUNCTION(BlueprintCallable, Category = "HUD|BossIntro")
 	void ShowBossIntro(const FText& BossRole, const FText& BossName);
@@ -84,6 +92,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void OnPossess(APawn* InPawn) override;
+	virtual void OnUnPossess() override;
 
 private:
 	UPROPERTY(EditDefaultsOnly, Category = "HUD")
@@ -94,12 +103,25 @@ private:
 	void BindPlayerHeatToHUD();
 	
 	void BindTargetingToHUD();
+	
+	void BindHeatActionAvailability(ADongincheonCharacter* InCharacter);
+	
+	void UnbindHeatActionAvailability();
+	
+	void SyncHeatActionPrompt();
 
 	UFUNCTION()
 	void HandleLockOnTargetChanged(AActor* NewTarget);
 	
 	UFUNCTION()
 	void HandleEnemyHUDTargetDeath(AActor* DamageCauser);
+	
+	UFUNCTION()
+	void HandleHeatActionAvailabilityChanged(bool bAvailable);
+
+	TWeakObjectPtr<ADongincheonCharacter> HeatActionSourceCharacter;
+
+	bool bHeatActionAvailable = false;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDIHUDRootWidget> HUDRootWidget;

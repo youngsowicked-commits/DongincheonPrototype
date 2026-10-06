@@ -747,33 +747,37 @@ void ADongincheonEnemyBase::BeginPlay()
 
 void ADongincheonEnemyBase::HandleHealthDamaged(float DamageAmount, AActor* DamageCauser)
 {
-	if (ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController()))
+	// Grab Victim은 Grab State가 행동의 유일한 Owner다.
+	// Grab Attack으로 Damage를 받아도 HitReact State로 빠지면 안 된다.
+	if (IsValid(GrabComponent) && GrabComponent->IsBeingGrabbed())
 	{
-		const float HitReactCooldown = IsValid(EnemyDefinition) ? EnemyDefinition->HitReactBehavior.Cooldown : 0.0f;
-		const bool bIgnoreDuringAttack = IsValid(EnemyDefinition) && EnemyDefinition->HitReactBehavior.bIgnoreWhileAttacking && IsAttackActive();
-
-		if (bIgnoreDuringAttack)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[HITREACT] ATTACK COMMIT SKIP | Enemy=%s"), *GetName());
-		}
-		else if (AIController->CanUseHitReact(HitReactCooldown))
+		if (ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController()))
 		{
 			AIController->StopMovement();
-
-			if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-			{
-				Movement->StopMovementImmediately();
-			}
-
-			AIController->MarkHitReactUsed();
-			AIController->SendHitReactEvent();
-
-			UE_LOG(LogTemp, Warning, TEXT("[HITREACT] TRIGGER | Enemy=%s | Cooldown=%.2f"), *GetName(), HitReactCooldown);
 		}
-		else
+
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[HITREACT] COOLDOWN SKIP | Enemy=%s | Cooldown=%.2f"), *GetName(), HitReactCooldown);
+			Movement->StopMovementImmediately();
 		}
+
+		OnDamagePresentation(DamageAmount, DamageCauser);
+
+		return;
+	}
+
+	if (ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("01B: HitReact AIController Cast SUCCESS"));
+
+		AIController->StopMovement();
+
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+		{
+			Movement->StopMovementImmediately();
+		}
+
+		AIController->SendHitReactEvent();
 	}
 	else
 	{

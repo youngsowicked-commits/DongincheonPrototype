@@ -166,6 +166,12 @@ void UDIHeatActionComponent::ProcessHeatActionHit()
         OwnerActor->GetInstigatorController(),
         OwnerActor,
         UDamageType::StaticClass());
+    
+    UE_LOG(LogTemp, Warning,
+    TEXT("[HEAT_HIT_PRESENTATION] Target=%s"),
+    *GetNameSafe(Target));
+    
+    OnHeatActionHitProcessed.Broadcast(Target);
 }
 
 void UDIHeatActionComponent::CompleteHeatAction()

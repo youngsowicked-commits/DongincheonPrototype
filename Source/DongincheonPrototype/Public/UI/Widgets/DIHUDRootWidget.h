@@ -12,6 +12,7 @@ class UDIQTEPromptWidgetBase;
 class UDIBossIntroWidgetBase;
 class UDITutorialPromptWidgetBase;
 class UDIContextActionHintWidgetBase;
+class UDIHeatActionPromptWidgetBase;
 class UHealthComponent;
 class UQTEComponent;
 class UWidget;
@@ -89,6 +90,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "HUD|ContextHint")
     void HideContextActionHint();
     
+    // Heat Action Prompt ------------------------------------
+    UFUNCTION(BlueprintCallable, Category = "HUD|HeatAction")
+    void ShowHeatActionPrompt();
+
+    UFUNCTION(BlueprintCallable, Category = "HUD|HeatAction")
+    void HideHeatActionPrompt();
+    
     // Global HUD Context ------------------------------------
     UFUNCTION(BlueprintCallable, Category = "HUD")
     void SetHUDContext(EDIHUDContext NewContext);
@@ -149,6 +157,9 @@ private:
     
     UPROPERTY(Transient)
     EDIHUDContext CurrentHUDContext = EDIHUDContext::Gameplay;
+    
+    UPROPERTY(meta = (BindWidget))
+    TObjectPtr<UDIHeatActionPromptWidgetBase> HeatActionPrompt;
     
     // Boss Intro Presentation
     // CombatHUDContainer 밖의 독립 레이어.

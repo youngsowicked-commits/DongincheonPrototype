@@ -5,6 +5,7 @@
 #include "UI/Widgets/DIBossIntroWidgetBase.h"
 #include "UI/Widgets/DITutorialPromptWidgetBase.h"
 #include "UI/Widgets/DIContextActionHintWidgetBase.h"
+#include "UI/Widgets/DIHeatActionPromptWidgetBase.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/Widget.h"
 #include "Components/CanvasPanelSlot.h"
@@ -196,6 +197,24 @@ void UDIHUDRootWidget::HideContextActionHint()
 	}
 }
 
+void UDIHUDRootWidget::ShowHeatActionPrompt()
+{
+	if (CurrentHUDContext != EDIHUDContext::Gameplay || !IsValid(HeatActionPrompt))
+	{
+		return;
+	}
+
+	HeatActionPrompt->ShowHeatActionPrompt();
+}
+
+void UDIHUDRootWidget::HideHeatActionPrompt()
+{
+	if (IsValid(HeatActionPrompt))
+	{
+		HeatActionPrompt->HideHeatActionPrompt();
+	}
+}
+
 void UDIHUDRootWidget::ShowBossIntro(const FText& BossRole,const FText& BossName)
 {
 	if (!IsValid(BossIntro))
@@ -336,5 +355,10 @@ void UDIHUDRootWidget::RefreshHUDVisibility()
 	if (CurrentHUDContext != EDIHUDContext::Gameplay && IsValid(ContextActionHint) && ContextActionHint->IsContextActionHintVisible())
 	{
 		ContextActionHint->HideContextActionHint();
+	}
+	
+	if (CurrentHUDContext != EDIHUDContext::Gameplay && IsValid(HeatActionPrompt) && HeatActionPrompt->IsHeatActionPromptVisible())
+	{
+		HeatActionPrompt->HideHeatActionPrompt();
 	}
 }

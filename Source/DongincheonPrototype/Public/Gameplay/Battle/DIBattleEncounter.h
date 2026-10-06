@@ -11,6 +11,12 @@ class UPrimitiveComponent;
 class ATargetPoint;
 class ADongincheonEnemyBase;
 class ADongincheonCharacter;
+class ADIBattleEncounter;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FDIEncounterCompletedSignature,
+	ADIBattleEncounter*,
+	Encounter);
 
 UENUM(BlueprintType)
 enum class EDIEncounterHUDType : uint8
@@ -89,6 +95,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Battle")
 	bool IsCompleted() const {return bCompleted;}
 	
+	UPROPERTY(BlueprintAssignable, Category = "Battle|Flow")
+	FDIEncounterCompletedSignature OnEncounterCompletedDelegate;
+
+	UFUNCTION(BlueprintCallable, Category = "Battle|Flow")
+	void SetEncounterTriggerEnabled(bool bEnabled);
+	
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -98,12 +110,16 @@ protected:
 	TObjectPtr<UBoxComponent> BattleTrigger;
 	
 	//Spawn 할 Production Enemy, BP_Enemy 등을 지정
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Battle|Spawn")
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Spawn")
 	TSubclassOf<ADongincheonEnemyBase> EnemyType;
 	
 	//레벨에 배치된 TargetPoint등을 Encounter Actor Instance에서 지정.
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Spawn")
-	TArray<TObjectPtr<ATargetPoint>> SpwanTargets;
+	TArray<TObjectPtr<ATargetPoint>> SpawnTargets;
+	
+	// 레벨에 미리 배치되어 있다가 Encounter 시작 시 전투에 참여할 Enemy들.
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Spawn")
+	TArray<TObjectPtr<ADongincheonEnemyBase>> PlacedEnemies;
 	
 	//전투시작시 Collision on, 종료시 off, 기존 BP BattleBlocker Actor Array 대응
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category="Battle|Blocker")
@@ -207,7 +223,9 @@ private:
 	void ShowEncounterHUD();
 	void HideEncounterHUD();
 	
+	void PreparePlacedEnemies();
 	void SpawnEnemies();
+	void RegisterPlacedEnemies();
 	void CompleteEncounter();
 	void SetBattleBlockerEnabled(bool bEnabled);
 	

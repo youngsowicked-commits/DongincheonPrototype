@@ -26,6 +26,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	float,CurrentHeat,
 	float,MaxHeat);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FDIHeatActionHitProcessedSignature,
+	AActor*,
+	Target);
+
 UCLASS(ClassGroup=(DI),meta=(BlueprintSpawnableComponent))
 class DONGINCHEONPROTOTYPE_API UDIHeatActionComponent : public UActorComponent
 {
@@ -79,6 +84,9 @@ public:
 	
 	UPROPERTY(BlueprintAssignable,Category = "Heat Action|Gauge")
 	FDIHeatChangedSignature OnHeatChanged;
+	
+	UPROPERTY(BlueprintAssignable,Category = "Heat Action|Presentation")
+	FDIHeatActionHitProcessedSignature OnHeatActionHitProcessed;
 
 private:
 	bool IsValidHeatActionTarget(AActor* Target,const FGameplayTag& ActionTag,const FHeatActionConfig& Config) const;

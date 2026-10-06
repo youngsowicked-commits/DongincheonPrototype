@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "GameFramework/Character.h"
 #include "Gameplay/Data/DIAttackData.h"
 #include "Gameplay/Data/DIGuardData.h"
@@ -37,7 +38,24 @@ enum class EPlayerDodgeDirection : uint8
 	Right
 };
 
+UENUM(BlueprintType)
+enum class EDIHeatActionPresentationEndReason : uint8
+{
+	Completed,
+	Cancelled,
+	Interrupted
+};
+
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDIHeatActionPresentationStartedSignature,AActor*,Target,FGameplayTag,ActionTag);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FDIHeatActionPresentationEndedSignature,EDIHeatActionPresentationEndReason,EndReason,
+	AActor*,Target,FGameplayTag,ActionTag);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDIHeatActionAvailabilityChangedSignature,bool,bAvailable);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPlayerQTEInputSignature,EQTEInputType,InputType);
+
 enum class EPlayerAttackMode : uint8
 {
 	None,
@@ -103,6 +121,27 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
 	bool IsCombatInputEnabled() const;
 	
+	UFUNCTION(BlueprintPure,Category = "Heat Action|Availability")
+	bool CanUseContextualHeatAction() const;
+
+	UPROPERTY(BlueprintAssignable,Category = "Heat Action|Availability")
+	FDIHeatActionAvailabilityChangedSignature OnHeatActionAvailabilityChanged;
+	
+	UPROPERTY(BlueprintAssignable,Category = "Heat Action|Presentation")
+	FDIHeatActionPresentationStartedSignature OnHeatActionPresentationStarted;
+
+	UPROPERTY(BlueprintAssignable,Category = "Heat Action|Presentation")
+	FDIHeatActionPresentationEndedSignature OnHeatActionPresentationEnded;
+
+	UFUNCTION(BlueprintPure,Category = "Heat Action|Presentation")
+	bool IsHeatActionExecuting() const;
+
+	UFUNCTION(BlueprintPure,Category = "Heat Action|Presentation")
+	AActor* GetActiveHeatActionTarget() const;
+
+	UFUNCTION(BlueprintPure,Category = "Heat Action|Presentation")
+	FGameplayTag GetActiveHeatActionTag() const;
+	
 	void FinalizePlayerDeath();
 	
 	void BeginAttackMoveWindow(float MoveWindowDuration);
@@ -144,6 +183,10 @@ protected:
 	
 	void PlayPlayerGrabHold();
 	void StopPlayerGrabHold(float BlendOutTime);
+	
+	void StartGrabAutoReleaseTimer();
+	void ClearGrabAutoReleaseTimer();
+	void HandleGrabAutoReleaseExpired();
 	
 	void StartPlayerGrabAttack();
 	void HandleGrabAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
@@ -365,12 +408,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Grab")
 	FGrabConfig GrabConfig;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Grab", meta = (ClampMin = "0.0"))
+	float GrabAutoReleaseDuration = 3.0f;
+	
 	//Heat Action Content
 	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category = "Player|Combat|HeatAction")
 	TArray<TObjectPtr<UDIHeatActionDefinition>> HeatActionDefinitions;
 
 	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category = "Player|Combat|HeatAction",meta = (ClampMin = "0.0"))
 	float HeatGainPerHit = 10.0f;
+	
+	UFUNCTION()
+	void HandleHeatChanged(float CurrentHeat,float MaxHeat);
+
+	void RefreshHeatActionAvailability();
 
 	AActor* ResolveContextualHeatActionTarget(const UDIHeatActionDefinition*& OutDefinition) const;
 	
@@ -379,6 +430,9 @@ protected:
 	void HandleHeatActionMontageEnded(UAnimMontage* Montage,bool bInterrupted);
 	void CancelPlayerHeatAction(float BlendOutTime = 0.0f);
 	void StopHeatActionVictimMontage(float BlendOutTime);
+	
+	void BeginHeatActionPresentationLifecycle(AActor* Target,const FGameplayTag& ActionTag);
+	void EndHeatActionPresentationLifecycle(EDIHeatActionPresentationEndReason EndReason);
 	
 	//Attack Content
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Player|Combat|Attack")
@@ -447,6 +501,14 @@ protected:
 	float FinisherHitStopDuration = 0.3f;
 	
 	//Runtime State
+	bool bHeatActionAvailable = false;
+	float HeatActionAvailabilityCheckElapsed = 0.0f;
+	
+	bool bHeatActionPresentationActive = false;
+
+	TWeakObjectPtr<AActor> ActiveHeatActionPresentationTarget;
+	FGameplayTag ActiveHeatActionPresentationTag;
+	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Input|Runtime")
 	bool bPresentationInputLocked = false;
 	
@@ -564,4 +626,7 @@ protected:
 	bool bHitStopActive = false;
 	
 	FTimerHandle HitStopTimerHandle;
+	
+	FTimerHandle GrabAutoReleaseTimerHandle;
+	bool bPendingGrabAutoRelease = false;
 };

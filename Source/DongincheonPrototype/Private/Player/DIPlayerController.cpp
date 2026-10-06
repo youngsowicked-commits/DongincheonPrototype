@@ -44,6 +44,8 @@ void ADIPlayerController::OnPossess(APawn* InPawn)
     BindPlayerHeatToHUD();
     BindTargetingToHUD();
 
+    BindHeatActionAvailability(Cast<ADongincheonCharacter>(InPawn));
+
     if (bCinematicControlLocked)
     {
         if (ADongincheonCharacter* PlayerCharacter = Cast<ADongincheonCharacter>(InPawn))
@@ -51,6 +53,13 @@ void ADIPlayerController::OnPossess(APawn* InPawn)
             PlayerCharacter->SetPresentationInputLocked(true);
         }
     }
+}
+
+void ADIPlayerController::OnUnPossess()
+{
+    UnbindHeatActionAvailability();
+
+    Super::OnUnPossess();
 }
 
 void ADIPlayerController::BindPlayerHealthToHUD()
@@ -99,6 +108,59 @@ void ADIPlayerController::BindPlayerHeatToHUD()
     }
 
     HUDRootWidget->SetPlayerHeatSource(HeatComponent);
+}
+
+void ADIPlayerController::BindHeatActionAvailability(ADongincheonCharacter* InCharacter)
+{
+    UnbindHeatActionAvailability();
+
+    if (!IsValid(InCharacter))
+    {
+        return;
+    }
+
+    HeatActionSourceCharacter = InCharacter;
+
+    InCharacter->OnHeatActionAvailabilityChanged.AddUniqueDynamic(
+        this,
+        &ADIPlayerController::HandleHeatActionAvailabilityChanged);
+
+    bHeatActionAvailable = InCharacter->CanUseContextualHeatAction();
+
+    SyncHeatActionPrompt();
+}
+
+void ADIPlayerController::UnbindHeatActionAvailability()
+{
+    if (ADongincheonCharacter* BoundCharacter = HeatActionSourceCharacter.Get())
+    {
+        BoundCharacter->OnHeatActionAvailabilityChanged.RemoveDynamic(
+            this,
+            &ADIPlayerController::HandleHeatActionAvailabilityChanged);
+    }
+
+    HeatActionSourceCharacter.Reset();
+    bHeatActionAvailable = false;
+
+    SyncHeatActionPrompt();
+}
+
+void ADIPlayerController::HandleHeatActionAvailabilityChanged(bool bAvailable)
+{
+    bHeatActionAvailable = bAvailable;
+
+    SyncHeatActionPrompt();
+}
+
+void ADIPlayerController::SyncHeatActionPrompt()
+{
+    if (CurrentHUDContext == EDIHUDContext::Gameplay && bHeatActionAvailable)
+    {
+        ShowHeatActionPrompt();
+        return;
+    }
+
+    HideHeatActionPrompt();
 }
 
 void ADIPlayerController::BindTargetingToHUD()
@@ -164,6 +226,8 @@ void ADIPlayerController::SetHUDContext(EDIHUDContext NewContext)
     }
 
     HUDRootWidget->SetHUDContext(CurrentHUDContext);
+
+    SyncHeatActionPrompt();
 }
 
 void ADIPlayerController::SetQTESource(UQTEComponent* InQTEComponent)
@@ -227,6 +291,26 @@ void ADIPlayerController::HideContextActionHint()
     {
         HUDRootWidget->HideContextActionHint();
     }
+}
+
+void ADIPlayerController::ShowHeatActionPrompt()
+{
+    if (!IsValid(HUDRootWidget))
+    {
+        return;
+    }
+
+    HUDRootWidget->ShowHeatActionPrompt();
+}
+
+void ADIPlayerController::HideHeatActionPrompt()
+{
+    if (!IsValid(HUDRootWidget))
+    {
+        return;
+    }
+
+    HUDRootWidget->HideHeatActionPrompt();
 }
 
 void ADIPlayerController::ClearQTESource()
@@ -414,4 +498,6 @@ void ADIPlayerController::CreateHUD()
     BindPlayerHeatToHUD();
 
     BindTargetingToHUD();
+    
+    BindHeatActionAvailability(Cast<ADongincheonCharacter>(GetPawn()));
 }

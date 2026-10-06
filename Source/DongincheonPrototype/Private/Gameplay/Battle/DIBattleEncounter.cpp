@@ -49,6 +49,9 @@ void ADIBattleEncounter::BeginPlay()
 
 	//게임 시작시 전투 Blocker 비활성화
 	SetBattleBlockerEnabled(false);
+	
+	// 레벨에 미리 배치된 적은 보이지만 아직 전투 전 상태.
+	PreparePlacedEnemies();
 }
 
 void ADIBattleEncounter::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -225,7 +228,14 @@ void ADIBattleEncounter::StartEncounter()
 	//Blocker 활성화, Combat Stance, 사운드 등, 레벨별 Presentation은 Blueprint가 담당.
 	OnEncounterStarted();
 
-	SpawnEnemies();
+	if (!PlacedEnemies.IsEmpty())
+	{
+		RegisterPlacedEnemies();
+	}
+	else
+	{
+		SpawnEnemies();
+	}
 
 	//Enemy 설정 누락이나 Spwan 실패로 전투가 영원히 막히는것을 방지
 	if (AliveCount <= 0)
@@ -715,6 +725,36 @@ void ADIBattleEncounter::CancelEncounterQTE()
 	QTEComponent->CancelQTE();
 }
 
+void ADIBattleEncounter::PreparePlacedEnemies()
+{
+	for (ADongincheonEnemyBase* Enemy : PlacedEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
+
+		UHealthComponent* Health =
+			Enemy->FindComponentByClass<UHealthComponent>();
+
+		if (IsValid(Health))
+		{
+			Health->SetDamageEnabled(false);
+		}
+
+		if (!Enemy->GetController())
+		{
+			Enemy->SpawnDefaultController();
+		}
+
+		UE_LOG(
+			LogDIBattleEncounter,
+			Log,
+			TEXT("Placed Enemy PREPARED: %s"),
+			*GetNameSafe(Enemy));
+	}
+}
+
 void ADIBattleEncounter::SpawnEnemies()
 {
 	if (!EnemyType)
@@ -731,7 +771,7 @@ void ADIBattleEncounter::SpawnEnemies()
 		return;
 	}
 
-	for (ATargetPoint* SpwanTarget : SpwanTargets)
+	for (ATargetPoint* SpwanTarget : SpawnTargets)
 	{
 		if (!IsValid(SpwanTarget))
 		{
@@ -808,6 +848,56 @@ void ADIBattleEncounter::SpawnEnemies()
 	}
 }
 
+void ADIBattleEncounter::RegisterPlacedEnemies()
+{
+	for (ADongincheonEnemyBase* Enemy : PlacedEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
+
+		UHealthComponent* Health =
+			Enemy->FindComponentByClass<UHealthComponent>();
+
+		if (!IsValid(Health))
+		{
+			UE_LOG(
+				LogDIBattleEncounter,
+				Error,
+				TEXT("Placed Enemy '%s' has no UHealthComponent."),
+				*GetNameSafe(Enemy));
+
+			continue;
+		}
+
+		Health->OnDeath.AddUniqueDynamic(
+			this,
+			&ADIBattleEncounter::HandleEnemyDeath);
+
+		if (HealthTriggers.Num() > 0)
+		{
+			Health->OnHealthChanged.AddUniqueDynamic(
+				this,
+				&ADIBattleEncounter::HandleEnemyHealthChanged);
+		}
+
+		SpawnedEnemies.Add(Enemy);
+		++AliveCount;
+
+		if (!Enemy->GetController())
+		{
+			Enemy->SpawnDefaultController();
+		}
+
+		UE_LOG(
+			LogDIBattleEncounter,
+			Log,
+			TEXT("Placed Enemy REGISTERED: %s | Alive=%d"),
+			*GetNameSafe(Enemy),
+			AliveCount);
+	}
+}
 
 void ADIBattleEncounter::HandleEnemyDeath(AActor* DamageCauser)
 {
@@ -857,7 +947,9 @@ void ADIBattleEncounter::CompleteEncounter()
 
 	UE_LOG(LogDIBattleEncounter, Log, TEXT("Encounter COMPLETE: %s"), *GetName());
 
-	//Blocker 해제, Combat Stance 해제, 다음 Gameplay Flow는 Blueprint가 담당.
+	OnEncounterCompletedDelegate.Broadcast(this);
+
+	// 기존 BP Presentation callback 유지
 	OnEncounterCompleted();
 }
 
@@ -872,4 +964,21 @@ void ADIBattleEncounter::SetBattleBlockerEnabled(bool bEnabled)
 
 		Blocker->SetActorEnableCollision(bEnabled);
 	}
+}
+
+void ADIBattleEncounter::SetEncounterTriggerEnabled(bool bEnabled)
+{
+	if (!IsValid(BattleTrigger))
+	{
+		return;
+	}
+
+	if (bStarted || bCompleted)
+	{
+		BattleTrigger->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+		return;
+	}
+
+	BattleTrigger->SetCollisionEnabled(bEnabled ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
 }
