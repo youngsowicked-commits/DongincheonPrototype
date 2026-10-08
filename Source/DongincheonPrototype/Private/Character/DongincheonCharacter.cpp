@@ -3382,8 +3382,12 @@ float ADongincheonCharacter::TakeDamage(float DamageAmount, struct FDamageEvent 
 
 
 //Hit Confirm Feedback
-void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor, FVector HitLocation, FName HitSocketName,
-                                                     float AppliedDamage, EDICombatImpactResult ImpactResult)
+void ADongincheonCharacter::HandleCombatHitConfirmed(
+	AActor* HitActor,
+	FVector HitLocation,
+	FName HitSocketName,
+	float AppliedDamage,
+	EDICombatImpactResult ImpactResult)
 {
 	if (!IsValid(HitActor))
 	{
@@ -3397,24 +3401,35 @@ void ADongincheonCharacter::HandleCombatHitConfirmed(AActor* HitActor, FVector H
 
 	StopAttackAssistMove();
 
-	if (ImpactResult == EDICombatImpactResult::Hit)
+	// Hit / GuardHit / GuardBreak 모두 Enemy HUD 갱신
+	if (ImpactResult == EDICombatImpactResult::Hit ||
+		ImpactResult == EDICombatImpactResult::GuardHit ||
+		ImpactResult == EDICombatImpactResult::GuardBreak)
 	{
-		if (ADIPlayerController* DIPlayerController = Cast<ADIPlayerController>(GetController()))
+		if (ADIPlayerController* DIPlayerController =
+			Cast<ADIPlayerController>(GetController()))
 		{
 			DIPlayerController->ShowEnemyHUD(HitActor);
 		}
+	}
 
+	// Heat 획득은 실제 데미지 Hit에만 적용
+	if (ImpactResult == EDICombatImpactResult::Hit)
+	{
 		if (IsValid(HeatActionComponent))
 		{
 			HeatActionComponent->AddHeat(HeatGainPerHit);
 		}
 	}
 
+	// 기존 Camera Shake 유지
 	if (HitCameraShakeClass)
 	{
-		if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+		if (APlayerController* PlayerController =
+			Cast<APlayerController>(GetController()))
 		{
-			if (APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager)
+			if (APlayerCameraManager* CameraManager =
+				PlayerController->PlayerCameraManager)
 			{
 				CameraManager->StartCameraShake(
 					HitCameraShakeClass,

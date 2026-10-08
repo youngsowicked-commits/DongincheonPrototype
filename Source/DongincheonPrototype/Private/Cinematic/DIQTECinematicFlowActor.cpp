@@ -1,5 +1,7 @@
 ﻿#include "Cinematic/DIQTECinematicFlowActor.h"
 
+#include "GameFramework/PlayerController.h"
+#include "Kismet/GameplayStatics.h"
 #include "LevelSequence.h"
 
 ADIQTECinematicFlowActor::ADIQTECinematicFlowActor()
@@ -8,6 +10,60 @@ ADIQTECinematicFlowActor::ADIQTECinematicFlowActor()
 	// Boss Mid-Fight의 경우 ADIBattleEncounter가 담당한다.
 	bManagePresentationState = false;
 	bRestoreGameplayOnFinish = false;
+}
+
+void ADIQTECinematicFlowActor::LockQTECameraLook()
+{
+	if (bQTECameraLookLocked)
+	{
+		return;
+	}
+
+	APlayerController* PC =
+		UGameplayStatics::GetPlayerController(this, 0);
+
+	if (!IsValid(PC))
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[QTE CAMERA] PlayerController not found")
+		);
+		return;
+	}
+
+	PC->SetIgnoreLookInput(true);
+
+	LookLockedController = PC;
+	bQTECameraLookLocked = true;
+
+	UE_LOG(LogTemp, Log, TEXT("[QTE CAMERA] LOOK LOCKED"));
+}
+
+void ADIQTECinematicFlowActor::UnlockQTECameraLook()
+{
+	if (!bQTECameraLookLocked)
+	{
+		return;
+	}
+
+	if (APlayerController* PC = LookLockedController.Get())
+	{
+		PC->SetIgnoreLookInput(false);
+	}
+
+	LookLockedController.Reset();
+	bQTECameraLookLocked = false;
+
+	UE_LOG(LogTemp, Log, TEXT("[QTE CAMERA] LOOK UNLOCKED"));
+}
+
+void ADIQTECinematicFlowActor::EndPlay(
+	const EEndPlayReason::Type EndPlayReason)
+{
+	UnlockQTECameraLook();
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void ADIQTECinematicFlowActor::StartQTECinematicFlow()
@@ -68,6 +124,8 @@ void ADIQTECinematicFlowActor::StartQTECinematicFlow()
 		StepIds.Add(Step.StepId);
 	}
 
+	LockQTECameraLook();
+
 	CurrentStepIndex = 0;
 
 	bCurrentQTEResolved = false;
@@ -78,6 +136,15 @@ void ADIQTECinematicFlowActor::StartQTECinematicFlow()
 	{
 		FlowState = EDIQTECinematicFlowState::PlayingSetup;
 		PlayCinematic();
+
+		if (!IsPlayingCinematic())
+		{
+			UnlockQTECameraLook();
+
+			FlowState = EDIQTECinematicFlowState::Inactive;
+			CurrentStepIndex = INDEX_NONE;
+		}
+
 		return;
 	}
 
@@ -262,7 +329,10 @@ void ADIQTECinematicFlowActor::CompleteFlow()
 	bCurrentQTESucceeded = false;
 	bCurrentQTESequenceFinished = false;
 
-	// 여기서만 "전체 QTE Cinematic Flow 종료"를 알린다.
+	// 전체 QTE Flow 완료 시 Camera Look 복구
+	UnlockQTECameraLook();
+
+	// 기존 Encounter의 Combat Resume 이벤트 유지
 	OnCinematicFinished.Broadcast();
 }
 

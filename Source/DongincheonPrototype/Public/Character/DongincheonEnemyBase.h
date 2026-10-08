@@ -22,6 +22,11 @@ class DONGINCHEONPROTOTYPE_API ADongincheonEnemyBase : public ACharacter
 	GENERATED_BODY()
 
 public:
+	// Enemy 개체별 HUD 이름
+	// 비어 있으면 EnemyDefinition의 DisplayName 사용
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI|HUD")
+	FText DisplayNameOverride;
+	
 	// Sets default values for this character's properties
 	ADongincheonEnemyBase();
 	
@@ -55,6 +60,12 @@ public:
 	{
 		return bAutoStartStateTreeOnPossess;
 	}
+	
+	// Enemy Combat Stance
+	void SetCombatStanceActive(bool bActive);
+
+	UFUNCTION(BlueprintPure, Category = "Enemy|Combat")
+	bool IsCombatStanceActive() const;
 	
 	//Guard
 	bool StartGuard();
@@ -102,6 +113,9 @@ private:
 	// Mid-Fight 이후 Boss Part 2 공격 패턴 사용 여부.
 	// 일반 Enemy 및 Boss Part 1에서는 false.
 	bool bPhase2Active = false;
+	
+	// Encounter StartCombat()에서 활성화하는 전투 자세 상태
+	bool bCombatStanceActive = false;
 	
 	UPROPERTY(Transient)
 	int32 ActiveAttackIndex = INDEX_NONE;

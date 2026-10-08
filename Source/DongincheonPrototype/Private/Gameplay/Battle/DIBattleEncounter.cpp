@@ -390,6 +390,8 @@ void ADIBattleEncounter::StartCombat()
 		{
 			continue;
 		}
+		
+		Enemy->SetCombatStanceActive(true);
 
 		if (Enemy->HealthComponent)
 		{
@@ -410,6 +412,9 @@ void ADIBattleEncounter::StartCombat()
 	}
 
 	OnCombatStarted();
+	
+	// 실제 Combat 시작을 외부 GameFlow Director에 알림.
+	OnCombatStartedDelegate.Broadcast(this);
 }
 
 void ADIBattleEncounter::PauseCombatForPresentation()
@@ -931,12 +936,16 @@ void ADIBattleEncounter::CompleteEncounter()
 	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>
 		(UGameplayStatics::GetPlayerCharacter(this, 0)))
 	{
-		Player->SetCombatInputEnabled(false);
+		if (!bKeepPlayerInCombatAfterCompletion)
+		{
+			Player->SetCombatInputEnabled(false);
+		}
+
 		Player->SetPresentationInputLocked(false);
-		
+
 		if (UInteractionComponent* Interaction = Player->FindComponentByClass<UInteractionComponent>())
 		{
-			Interaction->SetInteractionEnabled(true);
+			Interaction->SetInteractionEnabled(!bKeepPlayerInCombatAfterCompletion);
 		}
 	}
 	

@@ -115,6 +115,9 @@ class DONGINCHEONPROTOTYPE_API UDIEnemyDefinition : public UDataAsset
 	GENERATED_BODY()
 	
 public:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI|HUD")
+	FText DisplayName;
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Attack")
 	TArray<FAttackConfig> Attacks;
 	

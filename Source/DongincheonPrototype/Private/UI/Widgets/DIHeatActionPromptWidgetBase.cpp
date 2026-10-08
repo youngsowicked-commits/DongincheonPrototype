@@ -20,6 +20,12 @@ void UDIHeatActionPromptWidgetBase::NativeConstruct()
 		HideFinishedEvent.BindDynamic(this, &UDIHeatActionPromptWidgetBase::HandleHeatActionPromptHideFinished);
 		BindToAnimationFinished(HeatActionPromptHideAnimation, HideFinishedEvent);
 	}
+	
+	UE_LOG(LogTemp, Warning,
+	TEXT("[HEAT_PROMPT] Root=%s | ShowAnim=%s | HideAnim=%s"),
+	*GetNameSafe(HeatActionPromptRoot.Get()),
+	*GetNameSafe(HeatActionPromptShowAnimation.Get()),
+	*GetNameSafe(HeatActionPromptHideAnimation.Get()));
 }
 
 void UDIHeatActionPromptWidgetBase::NativeDestruct()
@@ -36,6 +42,10 @@ void UDIHeatActionPromptWidgetBase::NativeDestruct()
 
 void UDIHeatActionPromptWidgetBase::ShowHeatActionPrompt()
 {
+	UE_LOG(LogTemp, Warning, TEXT("[HEAT_PROMPT] SHOW CALLED | Visible=%d | AnimValid=%d"),
+	bHeatActionPromptVisible,
+	IsValid(HeatActionPromptShowAnimation));
+	
 	if (bHeatActionPromptVisible || !IsValid(HeatActionPromptRoot))
 	{
 		return;
@@ -57,6 +67,10 @@ void UDIHeatActionPromptWidgetBase::ShowHeatActionPrompt()
 
 void UDIHeatActionPromptWidgetBase::HideHeatActionPrompt()
 {
+	UE_LOG(LogTemp, Warning, TEXT("[HEAT_PROMPT] HIDE CALLED | Visible=%d | AnimValid=%d"),
+	bHeatActionPromptVisible,
+	IsValid(HeatActionPromptHideAnimation));
+	
 	if (!bHeatActionPromptVisible || !IsValid(HeatActionPromptRoot))
 	{
 		return;

@@ -4,7 +4,39 @@
 #include "Components/HealthComponent.h"
 #include "Components/DIHeatActionComponent.h"
 #include "Components/TargetingComponent.h"
+#include "Character/DongincheonEnemyBase.h"
+#include "AI/Data/DIEnemyDefinition.h"
 #include "UI/Widgets/DIHUDRootWidget.h"
+
+namespace
+{
+    FText ResolveCombatantDisplayName(const AActor* InActor, const FText& Fallback)
+    {
+        const ADongincheonEnemyBase* Enemy =
+            Cast<ADongincheonEnemyBase>(InActor);
+
+        if (!IsValid(Enemy))
+        {
+            return Fallback;
+        }
+
+        // 1순위: 레벨에 배치된 Enemy 개체별 이름
+        if (!Enemy->DisplayNameOverride.IsEmpty())
+        {
+            return Enemy->DisplayNameOverride;
+        }
+
+        // 2순위: 공용 EnemyDefinition 이름
+        if (IsValid(Enemy->EnemyDefinition) &&
+            !Enemy->EnemyDefinition->DisplayName.IsEmpty())
+        {
+            return Enemy->EnemyDefinition->DisplayName;
+        }
+
+        // 3순위: 기본 이름
+        return Fallback;
+    }
+}
 
 void ADIPlayerController::SetCinematicControlLocked(bool bLocked)
 {
@@ -343,7 +375,7 @@ void ADIPlayerController::HideBossIntro()
     HUDRootWidget->HideBossIntro();
 }
 
-void ADIPlayerController::SetBossHUD(UHealthComponent* BossHealthComponent,bool bActive)
+void ADIPlayerController::SetBossHUD(UHealthComponent* BossHealthComponent, bool bActive)
 {
     if (!IsValid(HUDRootWidget))
     {
@@ -354,6 +386,21 @@ void ADIPlayerController::SetBossHUD(UHealthComponent* BossHealthComponent,bool 
     {
         HUDRootWidget->ClearBossHealthSource();
         return;
+    }
+
+    if (bActive)
+    {
+        HideEnemyHUD();
+        
+        const FText DisplayName = ResolveCombatantDisplayName(
+            BossHealthComponent->GetOwner(),
+            NSLOCTEXT("DongincheonHUD", "UnknownBoss", "보스"));
+
+        HUDRootWidget->SetBossDisplayName(DisplayName);
+    }
+    else
+    {
+        HUDRootWidget->SetBossDisplayName(FText::GetEmpty());
     }
 
     HUDRootWidget->SetBossHealthSource(BossHealthComponent);
@@ -400,6 +447,11 @@ void ADIPlayerController::ShowEnemyHUD(AActor* EnemyActor)
         EnemyHUDHealthSource->OnDeath.AddUniqueDynamic(this,&ADIPlayerController::HandleEnemyHUDTargetDeath);
     }
 
+    const FText DisplayName = ResolveCombatantDisplayName(
+    EnemyActor,
+    NSLOCTEXT("DongincheonHUD", "UnknownEnemy", "적"));
+
+    HUDRootWidget->SetEnemyDisplayName(DisplayName);
     HUDRootWidget->SetEnemyHealthSource(EnemyHealthComponent);
     HUDRootWidget->SetEnemyHUDActive(true);
 }
@@ -440,7 +492,14 @@ void ADIPlayerController::ShowBossHUD(AActor* BossActor)
     {
         return;
     }
+    
+    HideEnemyHUD();
 
+    const FText DisplayName = ResolveCombatantDisplayName(
+        BossActor,
+        NSLOCTEXT("DongincheonHUD", "UnknownBoss", "보스"));
+
+    HUDRootWidget->SetBossDisplayName(DisplayName);
     HUDRootWidget->SetBossHealthSource(BossHealthComponent);
     HUDRootWidget->SetBossHUDActive(true);
 }

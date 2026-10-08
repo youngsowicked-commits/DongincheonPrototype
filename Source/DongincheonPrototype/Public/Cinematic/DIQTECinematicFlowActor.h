@@ -5,6 +5,8 @@
 #include "Cinematic/DICinematicTypes.h"
 #include "DIQTECinematicFlowActor.generated.h"
 
+class APlayerController;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FDIQTERequestedSignature,
 	FName,
@@ -36,12 +38,20 @@ public:
 	FDIQTERequestedSignature OnQTERequested;
 
 protected:
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	
 	virtual void HandleSequenceSegmentFinished() override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "QTE|Cinematic")
 	TArray<FDIQTECinematicStep> Steps;
 
 private:
+	void LockQTECameraLook();
+	void UnlockQTECameraLook();
+
+	TWeakObjectPtr<APlayerController> LookLockedController;
+	bool bQTECameraLookLocked = false;
+	
 	void BeginCurrentStep();
 	void PlayCurrentResultSequence();
 	void AdvanceToNextStep();

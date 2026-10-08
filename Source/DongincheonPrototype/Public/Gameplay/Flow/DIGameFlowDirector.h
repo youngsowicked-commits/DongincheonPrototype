@@ -104,8 +104,10 @@ private:
 	void DisableEncounterTrigger(ADIBattleEncounter* Encounter);
 
 	UFUNCTION()
-	void HandleEncounterCompleted(
-		ADIBattleEncounter* Encounter);
+	void HandleEncounterCompleted(ADIBattleEncounter* Encounter);
+	
+	UFUNCTION()
+	void HandleTutorialCombatStarted(ADIBattleEncounter* Encounter);
 
 private:
 	UPROPERTY(VisibleInstanceOnly, Category = "Game Flow|Runtime")

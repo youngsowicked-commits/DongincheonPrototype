@@ -11,6 +11,7 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/HealthComponent.h"
 #include "Components/DIHeatActionComponent.h"
+#include "Components/TextBlock.h"
 #include "GameFramework/PlayerController.h"
 
 void UDIHUDRootWidget::SetPlayerHealthSource(UHealthComponent* InHealthComponent)
@@ -51,12 +52,22 @@ void UDIHUDRootWidget::SetEnemyHealthSource(UHealthComponent* InHealthComponent)
 	EnemyHealthBar->SetHealthSource(InHealthComponent);
 }
 
+void UDIHUDRootWidget::SetEnemyDisplayName(const FText& InDisplayName)
+{
+	if (IsValid(EnemyNameText))
+	{
+		EnemyNameText->SetText(InDisplayName);
+	}
+}
+
 void UDIHUDRootWidget::ClearEnemyHealthSource()
 {
 	if (IsValid(EnemyHealthBar))
 	{
 		EnemyHealthBar->ClearHealthSource();
 	}
+
+	SetEnemyDisplayName(FText::GetEmpty());
 
 	bEnemyHUDActive = false;
 
@@ -98,12 +109,23 @@ void UDIHUDRootWidget::SetBossHealthSource(UHealthComponent* InHealthComponent)
 	BossHealthBar->SetHealthSource(InHealthComponent);
 }
 
+void UDIHUDRootWidget::SetBossDisplayName(const FText& InDisplayName)
+{
+	if (IsValid(BossNameText))
+	{
+		BossNameText->SetText(InDisplayName);
+	}
+}
+
 void UDIHUDRootWidget::ClearBossHealthSource()
 {
 	if (IsValid(BossHealthBar))
 	{
 		BossHealthBar->ClearHealthSource();
 	}
+
+	// Boss 이름 초기화
+	SetBossDisplayName(FText::GetEmpty());
 
 	bBossHUDActive = false;
 

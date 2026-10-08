@@ -13,6 +13,7 @@ class UDIBossIntroWidgetBase;
 class UDITutorialPromptWidgetBase;
 class UDIContextActionHintWidgetBase;
 class UDIHeatActionPromptWidgetBase;
+class UTextBlock;
 class UHealthComponent;
 class UQTEComponent;
 class UWidget;
@@ -33,6 +34,9 @@ public:
     // Enemy -------------------------------------------------
     UFUNCTION(BlueprintCallable, Category = "HUD")
     void SetEnemyHealthSource(UHealthComponent* InHealthComponent);
+    
+    UFUNCTION(BlueprintCallable, Category = "HUD|Enemy")
+    void SetEnemyDisplayName(const FText& InDisplayName);
 
     UFUNCTION(BlueprintCallable, Category = "HUD")
     void ClearEnemyHealthSource();
@@ -55,6 +59,9 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "HUD")
     bool IsBossHUDActive() const;
+    
+    UFUNCTION(BlueprintCallable, Category = "HUD|Boss")
+    void SetBossDisplayName(const FText& InDisplayName);
     
     // Boss Intro ----------------------------------------------
     UFUNCTION(BlueprintCallable, Category = "HUD|BossIntro")
@@ -135,6 +142,9 @@ private:
     UPROPERTY(meta = (BindWidget))
     TObjectPtr<UDIHealthBarWidgetBase> EnemyHealthBar;
     
+    UPROPERTY(meta = (BindWidget))
+    TObjectPtr<UTextBlock> EnemyNameText;
+    
     // Boss Name / HP / 이후 Boss 관련 Presentation 전체 Container
     UPROPERTY(meta = (BindWidget))
     TObjectPtr<UWidget> BossHUDContainer;
@@ -142,6 +152,9 @@ private:
     // Boss HP
     UPROPERTY(meta = (BindWidget))
     TObjectPtr<UDIHealthBarWidgetBase> BossHealthBar;
+    
+    UPROPERTY(meta = (BindWidget))
+    TObjectPtr<UTextBlock> BossNameText;
     
     // QTE Prompt
     UPROPERTY(meta = (BindWidget))

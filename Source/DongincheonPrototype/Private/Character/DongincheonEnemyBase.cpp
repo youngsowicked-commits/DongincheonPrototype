@@ -41,6 +41,18 @@ ADongincheonEnemyBase::ADongincheonEnemyBase()
 	}
 }
 
+void ADongincheonEnemyBase::SetCombatStanceActive(bool bActive)
+{
+	bCombatStanceActive = bActive;
+}
+
+bool ADongincheonEnemyBase::IsCombatStanceActive() const
+{
+	return bCombatStanceActive
+		&& IsValid(HealthComponent)
+		&& !HealthComponent->IsDead();
+}
+
 float ADongincheonEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent,
                                         class AController* EventInstigator, AActor* DamageCauser)
 {
@@ -298,53 +310,6 @@ bool ADongincheonEnemyBase::StartAttack(int32 AttackIndex)
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
 		Movement->StopMovementImmediately();
-
-		AActor* CombatTarget = IsValid(AIController) ? AIController->GetCombatTarget() : nullptr;
-
-		if (AttackConfig.LungeStrength > 0.0f && IsValid(CombatTarget))
-		{
-			const float TargetDistance = FVector::Dist2D(GetActorLocation(), CombatTarget->GetActorLocation());
-
-			// 이미 공격하기 좋은 거리 안이면 추가 전진을 하지 않는다.
-			if (TargetDistance > AttackConfig.PreferredTargetDistance)
-			{
-				const float LungeRange = FMath::Max(AttackConfig.MaxAssistDistance - AttackConfig.PreferredTargetDistance,1.0f);
-
-				const float RawLungeAlpha = FMath::Clamp((TargetDistance - AttackConfig.PreferredTargetDistance) / LungeRange, 0.0f, 1.0f);
-				const float MinCommitLungeAlpha = TargetDistance >= AttackConfig.PreferredTargetDistance + 10.0f ? 0.35f : 0.0f;
-				const float LungeAlpha = FMath::Max(RawLungeAlpha, MinCommitLungeAlpha);
-
-				UE_LOG(
-					LogTemp,
-					Log,
-					TEXT(
-						"[ENEMY_ATTACK_SPACING] Enemy=%s | AttackIndex=%d | Distance=%.1f | Preferred=%.1f | LungeAlpha=%.2f | LungeStrength=%.1f"
-					),
-					*GetName(),
-					AttackIndex,
-					TargetDistance,
-					AttackConfig.PreferredTargetDistance,
-					LungeAlpha,
-					AttackConfig.LungeStrength);
-
-				const FVector LungeVelocity = GetActorForwardVector() * AttackConfig.LungeStrength * LungeAlpha;
-
-				Movement->AddImpulse(LungeVelocity, true);
-			}
-			else
-			{
-				UE_LOG(
-					LogTemp,
-					Log,
-					TEXT(
-						"[ENEMY_ATTACK_SPACING] Enemy=%s | AttackIndex=%d | Distance=%.1f | Preferred=%.1f | Lunge=SKIPPED"
-					),
-					*GetName(),
-					AttackIndex,
-					TargetDistance,
-					AttackConfig.PreferredTargetDistance);
-			}
-		}
 	}
 
 	UE_LOG(
@@ -374,8 +339,6 @@ bool ADongincheonEnemyBase::StartAttack(int32 AttackIndex)
 	ActiveAttackIndex = AttackIndex;
 	bAttackCommitActive = AttackConfig.LungeStrength > 0.0f;
 	AttackCommitElapsedTime = 0.0f;
-	AttackCommitDirection = GetActorForwardVector().GetSafeNormal2D();
-
 	return true;
 }
 
@@ -1175,40 +1138,121 @@ void ADongincheonEnemyBase::HandleHeatActionStateChanged(EDIHeatActionState Prev
 // Called every frame
 void ADongincheonEnemyBase::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
+    Super::Tick(DeltaTime);
 
-	if (!bAttackCommitActive) return;
+    if (!bAttackCommitActive)
+    {
+        return;
+    }
 
-	AttackCommitElapsedTime += DeltaTime;
+    AttackCommitElapsedTime += DeltaTime;
 
-	if (AttackCommitElapsedTime >= 0.20f || !IsAttackActive())
-	{
-		bAttackCommitActive = false;
-		return;
-	}
+    if (AttackCommitElapsedTime >= 0.20f || !IsAttackActive())
+    {
+        bAttackCommitActive = false;
+        return;
+    }
 
-	if (!EnemyDefinition || !EnemyDefinition->Attacks.IsValidIndex(ActiveAttackIndex))
-	{
-		bAttackCommitActive = false;
-		return;
-	}
+    if (!EnemyDefinition ||
+        !EnemyDefinition->Attacks.IsValidIndex(ActiveAttackIndex))
+    {
+        bAttackCommitActive = false;
+        return;
+    }
 
-	ADongincheonAIController* AIController = Cast<ADongincheonAIController>(GetController());
-	AActor* CombatTarget = IsValid(AIController) ? AIController->GetCombatTarget() : nullptr;
+    ADongincheonAIController* AIController =
+        Cast<ADongincheonAIController>(GetController());
 
-	if (!IsValid(CombatTarget))
-	{
-		bAttackCommitActive = false;
-		return;
-	}
+    AActor* CombatTarget =
+        IsValid(AIController) ? AIController->GetCombatTarget() : nullptr;
 
-	const FAttackConfig& AttackConfig = EnemyDefinition->Attacks[ActiveAttackIndex];
-	const float DistanceToTarget = FVector::Dist2D(GetActorLocation(), CombatTarget->GetActorLocation());
+    UCharacterMovementComponent* Movement = GetCharacterMovement();
+    UCapsuleComponent* MyCapsule = GetCapsuleComponent();
 
-	if (DistanceToTarget > AttackConfig.PreferredTargetDistance)
-	{
-		AddMovementInput(AttackCommitDirection, 0.6f);
-	}
+    if (!IsValid(CombatTarget) ||
+        !IsValid(Movement) ||
+        !IsValid(MyCapsule))
+    {
+        bAttackCommitActive = false;
+        return;
+    }
+
+    const FAttackConfig& AttackConfig =
+        EnemyDefinition->Attacks[ActiveAttackIndex];
+
+    // 플레이어까지의 실제 방향과 거리
+    FVector ToTarget =
+        CombatTarget->GetActorLocation() - GetActorLocation();
+
+    ToTarget.Z = 0.0f;
+
+    const float TargetDistance = ToTarget.Size();
+
+    if (TargetDistance <= KINDA_SMALL_NUMBER)
+    {
+        bAttackCommitActive = false;
+        return;
+    }
+
+    const FVector MoveDirection = ToTarget / TargetDistance;
+
+    // 양쪽 Capsule 크기 계산
+    float CollisionStopDistance = MyCapsule->GetScaledCapsuleRadius();
+
+    if (const UCapsuleComponent* TargetCapsule =
+        CombatTarget->FindComponentByClass<UCapsuleComponent>())
+    {
+        CollisionStopDistance += TargetCapsule->GetScaledCapsuleRadius();
+    }
+
+    CollisionStopDistance += 5.0f;
+
+    // DataAsset 목표 거리와 물리적 최소 거리 중 큰 값 사용
+    const float StopDistance = FMath::Max(
+        AttackConfig.PreferredTargetDistance,
+        CollisionStopDistance
+    );
+
+    const float RemainingDistance = TargetDistance - StopDistance;
+
+    if (RemainingDistance <= KINDA_SMALL_NUMBER)
+    {
+        bAttackCommitActive = false;
+        return;
+    }
+
+    // LungeStrength를 접근 속도(cm/s)로 사용
+    const float MoveSpeed = FMath::Max(
+        AttackConfig.LungeStrength,
+        0.0f
+    );
+
+    const float MoveDistance = FMath::Min(
+        MoveSpeed * DeltaTime,
+        RemainingDistance
+    );
+
+    if (MoveDistance <= KINDA_SMALL_NUMBER)
+    {
+        bAttackCommitActive = false;
+        return;
+    }
+
+    // Capsule Sweep을 통한 충돌 안전 이동
+    FHitResult Hit;
+
+    Movement->SafeMoveUpdatedComponent(
+        MoveDirection * MoveDistance,
+        GetActorQuat(),
+        true,
+        Hit
+    );
+
+    // 벽 / 상대방 Capsule 등에 막히면 전진 종료
+    if (Hit.bBlockingHit)
+    {
+        bAttackCommitActive = false;
+    }
 }
 
 // Called to bind functionality to input

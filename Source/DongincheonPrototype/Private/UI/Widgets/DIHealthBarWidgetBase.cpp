@@ -6,10 +6,9 @@
 
 void UDIHealthBarWidgetBase::SetHealthSource(UHealthComponent* InHealthComponent)
 {
+    // 동일한 Health Source라면 Damage Lag 진행 상태 유지
     if (HealthSource == InHealthComponent)
     {
-        EnsureDynamicMaterial();
-        RefreshHealthBar();
         return;
     }
 

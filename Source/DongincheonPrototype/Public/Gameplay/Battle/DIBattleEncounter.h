@@ -18,6 +18,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	ADIBattleEncounter*,
 	Encounter);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FDIEncounterCombatStartedSignature,
+	ADIBattleEncounter*,
+	Encounter);
+
 UENUM(BlueprintType)
 enum class EDIEncounterHUDType : uint8
 {
@@ -97,6 +102,9 @@ public:
 	
 	UPROPERTY(BlueprintAssignable, Category = "Battle|Flow")
 	FDIEncounterCompletedSignature OnEncounterCompletedDelegate;
+	
+	UPROPERTY(BlueprintAssignable, Category = "Battle|Flow")
+	FDIEncounterCombatStartedSignature OnCombatStartedDelegate;
 
 	UFUNCTION(BlueprintCallable, Category = "Battle|Flow")
 	void SetEncounterTriggerEnabled(bool bEnabled);
@@ -129,6 +137,9 @@ protected:
 	//Cinematic,Placeholder 종료시 BP에서 StartCombat()g 호출
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Flow")
 	bool bAutoStartCombat = true;
+	
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Flow")
+	bool bKeepPlayerInCombatAfterCompletion = false;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|HUD")
 	EDIEncounterHUDType HUDType = EDIEncounterHUDType::Enemy;

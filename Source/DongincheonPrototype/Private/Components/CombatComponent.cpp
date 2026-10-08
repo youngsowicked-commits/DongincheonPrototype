@@ -859,21 +859,13 @@ bool UCombatComponent::ProcessSocketTrajectoryHit(FName SocketName, const FVecto
 
 		const FVector HitLocation = Hit.ImpactPoint.IsNearlyZero() ? TraceEnd : Hit.ImpactPoint;
 
-		DrawDebugSphere(
-			GetWorld(),
-			HitLocation,
-			5.0f,
-			12,
-			FColor::Cyan,
-			false,
-			1.0f);
-
 		if (ProcessHitActor(HitActor, HitLocation, SocketName))
 		{
 			bAnyNewHit = true;
 		}
 	}
 
+	/*
 	if (bDrawHitDebug)
 	{
 		const FColor DebugColor =
@@ -908,7 +900,7 @@ bool UCombatComponent::ProcessSocketTrajectoryHit(FName SocketName, const FVecto
 			DebugColor,
 			false,
 			0.15f);
-	}
+	}*/
 
 	return bAnyNewHit;
 }
