@@ -7,6 +7,7 @@
 
 class UImage;
 class UTextBlock;
+class UTexture2D;
 class UWidget;
 class UWidgetAnimation;
 
@@ -18,9 +19,30 @@ class DONGINCHEONPROTOTYPE_API UDITutorialPromptWidgetBase : public UUserWidget
 public:
 	UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
 	void ShowTutorialPrompt(const FText& InTitle, const FText& InDescription);
+	
+	UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
+	void ShowTutorialPromptRows(const FText& Title,FName Row1IconId,const FText& Row1Text,FName Row2IconId,const FText& Row2Text);
 
 	UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
 	void SetTutorialProgress(const FText& InProgressText);
+	
+	// Tutorial Two-Row Presentation
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> TutorialRow1Icon;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> TutorialRow1Text;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> TutorialRow2Icon;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> TutorialRow2Text;
+
+	// IconId -> Texture (WBP Class Defaults에서 지정)
+	UPROPERTY(EditDefaultsOnly, Category = "HUD|Tutorial|Icons")
+	TMap<FName, TObjectPtr<UTexture2D>> TutorialIconTextures;
 
 	UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
 	void SetTutorialInputIcon(const FSlateBrush& InBrush);
@@ -47,6 +69,14 @@ private:
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> TutorialInputIcon;
+
+	// 첫 번째 조작키 아이콘
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> TutorialKeyIconTop;
+
+	// 두 번째 조작키 아이콘
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> TutorialKeyIconBottom;
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> TutorialProgressText;

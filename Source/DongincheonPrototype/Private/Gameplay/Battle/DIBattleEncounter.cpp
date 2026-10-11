@@ -256,6 +256,11 @@ void ADIBattleEncounter::StartEncounter()
 	}
 }
 
+void ADIBattleEncounter::StartEncounterFromFlow()
+{
+	StartEncounter();
+}
+
 void ADIBattleEncounter::ShowEncounterHUD()
 {
 	ADIPlayerController* PlayerController =
@@ -415,6 +420,17 @@ void ADIBattleEncounter::StartCombat()
 	
 	// 실제 Combat 시작을 외부 GameFlow Director에 알림.
 	OnCombatStartedDelegate.Broadcast(this);
+}
+
+void ADIBattleEncounter::SetTutorialEnemyDamageLimited(bool bEnabled)
+{
+	for (ADongincheonEnemyBase* Enemy : SpawnedEnemies)
+	{
+		if (IsValid(Enemy))
+		{
+			Enemy->SetTutorialDamageLimited(bEnabled);
+		}
+	}
 }
 
 void ADIBattleEncounter::PauseCombatForPresentation()

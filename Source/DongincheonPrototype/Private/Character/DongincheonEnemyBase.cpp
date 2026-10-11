@@ -79,7 +79,22 @@ float ADongincheonEnemyBase::TakeDamage(float DamageAmount, struct FDamageEvent 
 		}
 	}
 
-	return Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	const float FinalDamage = bTutorialDamageLimited
+	? FMath::Min(DamageAmount, 0.01f)
+	: DamageAmount;
+
+	return Super::TakeDamage(
+		FinalDamage, DamageEvent, EventInstigator, DamageCauser);
+}
+
+void ADongincheonEnemyBase::SetTutorialDamageLimited(bool bEnabled)
+{
+	bTutorialDamageLimited = bEnabled;
+
+	UE_LOG(LogTemp, Log,
+		TEXT("TUTORIAL ENEMY DAMAGE | %s | Limited=%s"),
+		*GetNameSafe(this),
+		bEnabled ? TEXT("TRUE") : TEXT("FALSE"));
 }
 
 bool ADongincheonEnemyBase::StartGuard()

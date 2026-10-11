@@ -75,6 +75,15 @@ void ADongincheonCharacter::BeginPlay()
 	RefreshMovementSpeed();
 }
 
+void ADongincheonCharacter::EndPlay(
+	const EEndPlayReason::Type EndPlayReason)
+{
+	bTutorialInfiniteHeatEnabled = false;
+	bTutorialHitReportedForActiveAttack = false;
+
+	Super::EndPlay(EndPlayReason);
+}
+
 void ADongincheonCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -200,7 +209,21 @@ void ADongincheonCharacter::HandleLockOnSwitch(const FInputActionValue& Value)
 		return;
 	}
 
+	AActor* PreviousTarget =
+	TargetingComponent->GetLockOnTarget();
+
 	TargetingComponent->SwitchTarget(Direction);
+
+	AActor* NewTarget =
+		TargetingComponent->GetLockOnTarget();
+
+	if (IsValid(PreviousTarget) &&
+		IsValid(NewTarget) &&
+		PreviousTarget != NewTarget)
+	{
+		OnTutorialAction.Broadcast(
+			EDIPlayerTutorialAction::LockOnSwitched);
+	}
 }
 
 void ADongincheonCharacter::HandleLockOnStarted(const FInputActionValue& Value)
@@ -229,6 +252,13 @@ void ADongincheonCharacter::HandleLockOnStarted(const FInputActionValue& Value)
 	if (IsValid(TargetingComponent))
 	{
 		TargetingComponent->TryLockOn();
+		
+		if (TargetingComponent->IsLockedOn() && IsValid(TargetingComponent->GetLockOnTarget()))
+		{
+			OnTutorialAction.Broadcast(
+				EDIPlayerTutorialAction::LockOnAcquired);
+		}
+		
 		RefreshMovementSpeed();
 	}
 }
@@ -314,8 +344,20 @@ bool ADongincheonCharacter::IsMovementInputAllowed() const
 		bPlayerHitReacting && !bPlayerDeathStarted;
 }
 
+bool ADongincheonCharacter::HasTutorialMovementInput() const
+{
+	// WASD 입력이 있고 실제 이동이 허용된 경우만 인정
+	return !CachedMoveInput.IsNearlyZero(0.1f)
+		&& IsMovementInputAllowed();
+}
+
 void ADongincheonCharacter::SetPresentationInputLocked(bool blocked)
 {
+	if (blocked && !bHeatActionPresentationActive)
+	{
+		SetTutorialInfiniteHeatEnabled(false);
+	}
+	
 	UE_LOG(
 		LogTemp,
 		Warning,
@@ -371,6 +413,11 @@ void ADongincheonCharacter::SetInteractionInputLocked(bool bLocked)
 
 void ADongincheonCharacter::SetCombatInputEnabled(bool bEnabled)
 {
+	if (!bEnabled)
+	{
+		SetTutorialInfiniteHeatEnabled(false);
+	}
+	
 	if (bCombatInputEnabled == bEnabled)
 	{
 		return;
@@ -412,6 +459,34 @@ void ADongincheonCharacter::SetCombatInputEnabled(bool bEnabled)
 bool ADongincheonCharacter::IsCombatInputEnabled() const
 {
 	return bCombatInputEnabled;
+}
+
+void ADongincheonCharacter::SetTutorialInfiniteHeatEnabled(bool bEnabled)
+{
+	if (bEnabled)
+	{
+		if (!IsValid(HeatActionComponent) ||
+			HeatActionComponent->GetMaxHeat() <= 0.0f)
+		{
+			return;
+		}
+	}
+
+	bTutorialInfiniteHeatEnabled = bEnabled;
+
+	if (bEnabled)
+	{
+		const float MissingHeat =
+			HeatActionComponent->GetMaxHeat() -
+			HeatActionComponent->GetCurrentHeat();
+
+		if (MissingHeat > 0.0f)
+		{
+			HeatActionComponent->AddHeat(MissingHeat);
+		}
+	}
+
+	RefreshHeatActionAvailability();
 }
 
 //Attack Input
@@ -611,6 +686,12 @@ void ADongincheonCharacter::EndHeatActionPresentationLifecycle(
 		return;
 	}
 
+	// 정상 완료가 아닌 경우 Tutorial Infinite Heat 해제
+	if (EndReason != EDIHeatActionPresentationEndReason::Completed)
+	{
+		SetTutorialInfiniteHeatEnabled(false);
+	}
+
 	AActor* Target = ActiveHeatActionPresentationTarget.Get();
 	const FGameplayTag ActionTag = ActiveHeatActionPresentationTag;
 
@@ -618,7 +699,7 @@ void ADongincheonCharacter::EndHeatActionPresentationLifecycle(
 	ActiveHeatActionPresentationTarget.Reset();
 	ActiveHeatActionPresentationTag = FGameplayTag();
 
-	UE_LOG(LogTemp,Warning,
+	UE_LOG(LogTemp, Warning,
 		TEXT("[HEAT_PRESENTATION] END | Reason=%d | Target=%s | Tag=%s"),
 		static_cast<int32>(EndReason),
 		*GetNameSafe(Target),
@@ -839,6 +920,10 @@ void ADongincheonCharacter::StartPlayerHeatAction(AActor* Target, const UDIHeatA
 	if (VictimMontageResult <= 0.0f)
 	{
 		HeatActionComponent->CancelHeatAction();
+
+		// Victim Montage 재생 실패 시 Infinite Heat 정리
+		SetTutorialInfiniteHeatEnabled(false);
+
 		return;
 	}
 
@@ -851,6 +936,10 @@ void ADongincheonCharacter::StartPlayerHeatAction(AActor* Target, const UDIHeatA
 	{
 		StopHeatActionVictimMontage(0.05f);
 		HeatActionComponent->CancelHeatAction();
+
+		// Player Montage 재생 실패 시 Infinite Heat 정리
+		SetTutorialInfiniteHeatEnabled(false);
+
 		return;
 	}
 
@@ -1118,6 +1207,25 @@ void ADongincheonCharacter::StartPlayerAttack(const FAttackConfig& Attack)
 	}
 
 	ActiveAttackMontage = Attack.Montage;
+	
+	// Tutorial: 실제 다음 공격 Montage 시작 성공을 기준으로 집계
+	if (ActiveAttackMode == EPlayerAttackMode::LightCombo &&
+		ActiveComboIndex == 1)
+	{
+		OnTutorialAction.Broadcast(
+			EDIPlayerTutorialAction::LightComboChained);
+	}
+	else if (ActiveAttackMode == EPlayerAttackMode::Heavy &&
+			 ActiveHeavyBranchIndex != INDEX_NONE &&
+			 ActiveHeavyComboIndex == 0)
+	{
+		OnTutorialAction.Broadcast(
+			EDIPlayerTutorialAction::LightToHeavyBranched);
+	}
+	
+	// 실제 공격 Montage 재생에 성공했으므로
+	// 이번 공격의 Tutorial Hit 집계 허용
+	bTutorialHitReportedForActiveAttack = false;
 
 	FOnMontageEnded MontageEndedDelegate;
 	MontageEndedDelegate.BindUObject(this, &ADongincheonCharacter::HandleAttackMontageEnded);
@@ -2219,6 +2327,14 @@ void ADongincheonCharacter::HandleGrabStateChanged(EDIGrabState PreviousState, E
 	if (NewState == EDIGrabState::Holding)
 	{
 		StartGrabAutoReleaseTimer();
+
+		if (IsValid(GrabComponent) &&
+			GrabComponent->IsHoldingGrab() &&
+			IsValid(GrabComponent->GetGrabbedActor()))
+		{
+			OnTutorialAction.Broadcast(
+				EDIPlayerTutorialAction::GrabSucceeded);
+		}
 	}
 	else if (NewState == EDIGrabState::None || NewState == EDIGrabState::Releasing)
 	{
@@ -2410,6 +2526,9 @@ void ADongincheonCharacter::HandleGrabAttackHitConfirmed(AActor* HitActor, float
 	{
 		return;
 	}
+	
+	OnTutorialAction.Broadcast(
+	EDIPlayerTutorialAction::GrabAttackHit);
 
 	if (IsValid(HeatActionComponent))
 	{
@@ -2614,6 +2733,8 @@ void ADongincheonCharacter::StartPlayerDodge()
 	MontageEndedDelegate.BindUObject(this, &ADongincheonCharacter::HandleDodgeMontageEnded);
 
 	AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate, ActiveDodgeMontage);
+	
+	OnTutorialAction.Broadcast(EDIPlayerTutorialAction::DodgePerformed);
 }
 
 EPlayerDodgeDirection ADongincheonCharacter::ResolvePlayerDodgeDirection() const
@@ -3184,6 +3305,9 @@ void ADongincheonCharacter::StartPlayerDeath()
 	{
 		return;
 	}
+	
+	// Player 사망 시 Tutorial Infinite Heat 종료
+	SetTutorialInfiniteHeatEnabled(false);
 
 	bPlayerDeathStarted = true;
 	bPlayerHitReacting = false;
@@ -3364,6 +3488,9 @@ float ADongincheonCharacter::TakeDamage(float DamageAmount, struct FDamageEvent 
 				}
 
 				StartPlayerGuardHitReact();
+				
+				OnTutorialAction.Broadcast(EDIPlayerTutorialAction::GuardBlocked);
+				
 				return 0.0f;
 			}
 
@@ -3419,6 +3546,26 @@ void ADongincheonCharacter::HandleCombatHitConfirmed(
 		if (IsValid(HeatActionComponent))
 		{
 			HeatActionComponent->AddHeat(HeatGainPerHit);
+		}
+	}
+	
+	// Tutorial: 한 공격 Montage당 실제 적중 1회만 집계
+	if (ImpactResult == EDICombatImpactResult::Hit &&
+		AppliedDamage > 0.0f &&
+		bPlayerAttackActive &&
+		IsValid(ActiveAttackMontage) &&
+		!bTutorialHitReportedForActiveAttack)
+	{
+		if (ActiveAttackMode == EPlayerAttackMode::LightCombo ||
+			ActiveAttackMode == EPlayerAttackMode::Heavy)
+		{
+			// Broadcast 전에 기록해 중복 호출 방지
+			bTutorialHitReportedForActiveAttack = true;
+
+			OnTutorialAction.Broadcast(
+				ActiveAttackMode == EPlayerAttackMode::LightCombo
+					? EDIPlayerTutorialAction::LightHit
+					: EDIPlayerTutorialAction::HeavyHit);
 		}
 	}
 

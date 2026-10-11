@@ -70,6 +70,28 @@ enum class EQueuedAttackType : uint8
 	Heavy
 };
 
+// Tutorial Gameplay Actions
+UENUM(BlueprintType)
+enum class EDIPlayerTutorialAction : uint8
+{
+	LightHit,
+	HeavyHit,
+	DodgePerformed,
+	GuardBlocked,
+	LockOnAcquired,
+	LockOnSwitched,
+	
+	LightComboChained,
+	LightToHeavyBranched,
+	GrabSucceeded,
+	GrabAttackHit
+};
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+    FDIPlayerTutorialActionSignature,
+    EDIPlayerTutorialAction,
+    Action);
+
 USTRUCT(BlueprintType)
 struct FPlayerHeavyComboBranch
 {
@@ -90,6 +112,9 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Player|QTE")
 	FPlayerQTEInputSignature OnQTEInputPressed;
 	
+	UPROPERTY(BlueprintAssignable, Category = "Player|Tutorial")
+	FDIPlayerTutorialActionSignature OnTutorialAction;
+	
 	//Player Runtime Query
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
 	bool IsPlayerAttacking() const
@@ -106,6 +131,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Player|Movement")
 	bool IsMovementInputAllowed() const;
 	
+	// Tutorial 이동 입력 상태 조회
+	UFUNCTION(BlueprintPure, Category = "Player|Tutorial")
+	bool HasTutorialMovementInput() const;
+	
 	UFUNCTION(BlueprintCallable, Category = "Player|Input")
 	void SetPresentationInputLocked(bool blocked);
 	
@@ -120,6 +149,16 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Player|Combat")
 	bool IsCombatInputEnabled() const;
+	
+	// Tutorial 02-2 전용 Infinite Heat
+	UFUNCTION(BlueprintCallable, Category = "Player|Tutorial")
+	void SetTutorialInfiniteHeatEnabled(bool bEnabled);
+
+	UFUNCTION(BlueprintPure, Category = "Player|Tutorial")
+	bool IsTutorialInfiniteHeatEnabled() const
+	{
+		return bTutorialInfiniteHeatEnabled;
+	}
 	
 	UFUNCTION(BlueprintPure,Category = "Heat Action|Availability")
 	bool CanUseContextualHeatAction() const;
@@ -151,6 +190,8 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 	virtual void Tick(float DeltaTime) override;
 	
@@ -519,6 +560,11 @@ protected:
 	bool bCombatInputEnabled = false;
 	
 	bool bRunInputHeld = false;
+	
+	// 한 공격 Montage에서 Tutorial Hit 이벤트 중복 방지
+	bool bTutorialHitReportedForActiveAttack = false;
+	
+	bool bTutorialInfiniteHeatEnabled = false;
 	
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Player|Combat|Runtime")
 	bool bPlayerAttackActive = false;

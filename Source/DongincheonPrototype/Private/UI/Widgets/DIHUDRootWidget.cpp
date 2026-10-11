@@ -177,6 +177,26 @@ void UDIHUDRootWidget::ShowTutorialPrompt(const FText& Title, const FText& Descr
 	}
 }
 
+void UDIHUDRootWidget::ShowTutorialPromptRows(
+	const FText& Title,
+	FName Row1IconId,
+	const FText& Row1Text,
+	FName Row2IconId,
+	const FText& Row2Text)
+{
+	if (!IsValid(TutorialPrompt))
+	{
+		return;
+	}
+
+	TutorialPrompt->ShowTutorialPromptRows(
+		Title,
+		Row1IconId,
+		Row1Text,
+		Row2IconId,
+		Row2Text);
+}
+
 void UDIHUDRootWidget::SetTutorialProgress(const FText& ProgressText)
 {
 	if (IsValid(TutorialPrompt))

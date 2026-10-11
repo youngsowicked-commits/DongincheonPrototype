@@ -54,11 +54,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle")
 	void StartEncounter();
 	
+	void StartEncounterFromFlow();
+	
 	UFUNCTION(BlueprintCallable, Category = "Battle")
 	void StartCombat();
 	
 	UFUNCTION(BlueprintPure, Category = "Battle")
 	bool IsCombatStarted() const {return bCombatStarted;}
+	
+	UFUNCTION(BlueprintCallable, Category = "Encounter|Tutorial")
+	void SetTutorialEnemyDamageLimited(bool bEnabled);
 	
 	UFUNCTION(BlueprintCallable, Category = "Battle|Flow")
 	void PauseCombatForPresentation();

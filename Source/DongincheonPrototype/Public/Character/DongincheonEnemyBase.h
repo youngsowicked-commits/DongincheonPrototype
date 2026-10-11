@@ -32,6 +32,12 @@ public:
 	
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 	
+	UFUNCTION(BlueprintCallable, Category = "Enemy|Tutorial")
+	void SetTutorialDamageLimited(bool bEnabled);
+
+	UPROPERTY(Transient)
+	bool bTutorialDamageLimited = false;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UHealthComponent> HealthComponent;
 	

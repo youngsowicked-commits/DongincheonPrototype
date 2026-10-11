@@ -80,6 +80,14 @@ public:
     // Tutorial ----------------------------------------------
     UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
     void ShowTutorialPrompt(const FText& Title, const FText& Description);
+    
+    UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
+    void ShowTutorialPromptRows(
+        const FText& Title,
+        FName Row1IconId,
+        const FText& Row1Text,
+        FName Row2IconId,
+        const FText& Row2Text);
 
     UFUNCTION(BlueprintCallable, Category = "HUD|Tutorial")
     void SetTutorialProgress(const FText& ProgressText);

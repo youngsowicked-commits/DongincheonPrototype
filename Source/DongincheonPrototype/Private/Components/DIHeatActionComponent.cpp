@@ -1,6 +1,7 @@
 ﻿#include "Components/DIHeatActionComponent.h"
 
 #include "Components/HealthComponent.h"
+#include "Character/DongincheonCharacter.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -403,13 +404,30 @@ bool UDIHeatActionComponent::ConsumeHeat(float Amount)
         return true;
     }
 
+    // 기존 Heat 비용 검사는 반드시 유지
     if (!HasEnoughHeat(Amount))
     {
         return false;
     }
 
-    CurrentHeat = FMath::Clamp(CurrentHeat - Amount,0.0f,MaxHeat);
-    OnHeatChanged.Broadcast(CurrentHeat,MaxHeat);
+    // Tutorial Infinite Heat 활성화 시
+    // 비용 검사는 통과하되 실제 Heat는 소비하지 않음
+    if (const ADongincheonCharacter* Player =
+        Cast<ADongincheonCharacter>(GetOwner()))
+    {
+        if (Player->IsTutorialInfiniteHeatEnabled())
+        {
+            return true;
+        }
+    }
+
+    // 일반 Gameplay에서는 기존 Heat 소비 규칙 유지
+    CurrentHeat = FMath::Clamp(
+        CurrentHeat - Amount,
+        0.0f,
+        MaxHeat);
+
+    OnHeatChanged.Broadcast(CurrentHeat, MaxHeat);
 
     return true;
 }
