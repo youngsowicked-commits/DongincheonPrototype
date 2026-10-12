@@ -213,7 +213,12 @@ void ADIBattleEncounter::StartEncounter()
 		Player->OnQTEInputPressed.AddUniqueDynamic(this,&ADIBattleEncounter::HandlePlayerQTEInputPressed
 		);
 
-		Player->SetPresentationInputLocked(true);
+		// 즉시 전투가 시작되는 Encounter에서는 불필요한 입력 잠금을 생략.
+		// Boss Intro 등 전투 시작을 기다리는 Encounter에서는 기존 잠금 유지.
+		if (!bAutoStartCombat)
+		{
+			Player->SetPresentationInputLocked(true);
+		}
 	}
 	
 	//한번 발동했으면 다시 Trigger되지 않게 함,
@@ -949,20 +954,25 @@ void ADIBattleEncounter::CompleteEncounter()
 	
 	bCompleted = true;
 	
-	if (ADongincheonCharacter* Player = Cast<ADongincheonCharacter>
-		(UGameplayStatics::GetPlayerCharacter(this, 0)))
+	if (ADongincheonCharacter* Player =
+	Cast<ADongincheonCharacter>(
+		UGameplayStatics::GetPlayerCharacter(this, 0)))
 	{
-		if (!bKeepPlayerInCombatAfterCompletion)
-		{
-			Player->SetCombatInputEnabled(false);
-		}
-
+		// Encounter 종료 시 입력 잠금은 반드시 해제
 		Player->SetPresentationInputLocked(false);
 
-		if (UInteractionComponent* Interaction = Player->FindComponentByClass<UInteractionComponent>())
+		if (bReturnToExplorationOnComplete)
 		{
-			Interaction->SetInteractionEnabled(!bKeepPlayerInCombatAfterCompletion);
+			// 독립 Encounter: 탐색 모드 복귀
+			Player->SetCombatInputEnabled(false);
+
+			if (UInteractionComponent* Interaction =
+				Player->FindComponentByClass<UInteractionComponent>())
+			{
+				Interaction->SetInteractionEnabled(true);
+			}
 		}
+		// Story Encounter는 Combat Mode와 Interaction 상태 유지
 	}
 	
 	HideEncounterHUD();

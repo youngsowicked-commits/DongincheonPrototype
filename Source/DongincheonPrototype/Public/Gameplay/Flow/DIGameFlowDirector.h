@@ -60,9 +60,9 @@ protected:
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Game Flow|Encounter")
 	TArray<TObjectPtr<ADIBattleEncounter>> TutorialEncounters;
 
-	// 일반 큰 전투
+	// 일반 전투 Encounter들 - 배열 순서대로 진행
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Game Flow|Encounter")
-	TObjectPtr<ADIBattleEncounter> MainEncounter;
+	TArray<TObjectPtr<ADIBattleEncounter>> MainEncounters;
 
 	// Boss
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Game Flow|Encounter")
@@ -185,4 +185,7 @@ private:
 
 	UPROPERTY(VisibleInstanceOnly, Category = "Game Flow|Runtime")
 	int32 CurrentTutorialIndex = INDEX_NONE;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Game Flow|Runtime")
+	int32 CurrentMainEncounterIndex = INDEX_NONE;
 };

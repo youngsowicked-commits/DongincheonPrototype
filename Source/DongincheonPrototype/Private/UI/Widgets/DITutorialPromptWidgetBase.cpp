@@ -55,7 +55,6 @@ void UDITutorialPromptWidgetBase::ShowTutorialPrompt(
         TutorialTitleText->SetText(InTitle);
     }
 
-    // 기존 단일 메시지 표시
     if (IsValid(TutorialDescriptionText))
     {
         TutorialDescriptionText->SetText(InDescription);
@@ -63,18 +62,16 @@ void UDITutorialPromptWidgetBase::ShowTutorialPrompt(
             ESlateVisibility::HitTestInvisible);
     }
 
-    // 이전 2행 UI 정리
-    if (IsValid(TutorialRow1Icon))
-        TutorialRow1Icon->SetVisibility(ESlateVisibility::Collapsed);
-
+    // 2행 표시 숨김
     if (IsValid(TutorialRow1Text))
+    {
         TutorialRow1Text->SetVisibility(ESlateVisibility::Collapsed);
-
-    if (IsValid(TutorialRow2Icon))
-        TutorialRow2Icon->SetVisibility(ESlateVisibility::Collapsed);
+    }
 
     if (IsValid(TutorialRow2Text))
+    {
         TutorialRow2Text->SetVisibility(ESlateVisibility::Collapsed);
+    }
 
     if (IsValid(TutorialHideAnimation))
     {
@@ -100,15 +97,10 @@ void UDITutorialPromptWidgetBase::ShowTutorialPromptRows(
     FName Row2IconId,
     const FText& Row2Text)
 {
-    // 기존 제목, 등장 애니메이션, 표시 상태 재사용
+    // 기존 제목 및 표시 애니메이션 재사용
     ShowTutorialPrompt(Title, FText::GetEmpty());
 
-    if (!IsValid(TutorialPromptRoot))
-    {
-        return;
-    }
-
-    // 단일 메시지 UI 숨김
+    // 기존 단일 설명 숨김
     if (IsValid(TutorialDescriptionText))
     {
         TutorialDescriptionText->SetVisibility(
@@ -121,62 +113,46 @@ void UDITutorialPromptWidgetBase::ShowTutorialPromptRows(
             ESlateVisibility::Collapsed);
     }
 
-    // 각 행의 IconId -> Texture 매핑 및 텍스트 표시
-    const auto ApplyRow =
-        [this](
-            UImage* IconWidget,
-            UTextBlock* TextWidget,
-            FName IconId,
-            const FText& Description)
+    const auto GetKeyDisplayText = [](FName IconId) -> FText
     {
-        if (IsValid(TextWidget))
+        if (IconId == FName(TEXT("LMB")))
         {
-            TextWidget->SetText(Description);
-            TextWidget->SetVisibility(
-                ESlateVisibility::HitTestInvisible);
+            return FText::FromString(TEXT("좌클릭"));
         }
 
-        if (!IsValid(IconWidget))
+        if (IconId == FName(TEXT("RMB")))
         {
-            return;
+            return FText::FromString(TEXT("우클릭"));
         }
 
-        const TObjectPtr<UTexture2D>* FoundTexture =
-            TutorialIconTextures.Find(IconId);
-
-        UTexture2D* Texture =
-            FoundTexture ? FoundTexture->Get() : nullptr;
-
-        if (IsValid(Texture))
-        {
-            IconWidget->SetBrushFromTexture(Texture, false);
-            IconWidget->SetVisibility(
-                ESlateVisibility::HitTestInvisible);
-        }
-        else
-        {
-            IconWidget->SetVisibility(
-                ESlateVisibility::Collapsed);
-
-            UE_LOG(
-                LogTemp,
-                Warning,
-                TEXT("Tutorial icon not assigned: %s"),
-                *IconId.ToString());
-        }
+        return FText::FromName(IconId);
     };
+    
+    // 첫 번째 행: [LMB] 기본 공격
+    if (IsValid(TutorialRow1Text))
+    {
+        TutorialRow1Text->SetText(
+            FText::Format(
+                FText::FromString(TEXT("[{0}]  {1}")),
+                GetKeyDisplayText(Row1IconId),
+                Row1Text));
 
-    ApplyRow(
-        TutorialRow1Icon.Get(),
-        TutorialRow1Text.Get(),
-        Row1IconId,
-        Row1Text);
+        TutorialRow1Text->SetVisibility(
+            ESlateVisibility::HitTestInvisible);
+    }
 
-    ApplyRow(
-        TutorialRow2Icon.Get(),
-        TutorialRow2Text.Get(),
-        Row2IconId,
-        Row2Text);
+    // 두 번째 행: [RMB] 강공격
+    if (IsValid(TutorialRow2Text))
+    {
+        TutorialRow2Text->SetText(
+            FText::Format(
+                FText::FromString(TEXT("[{0}]  {1}")),
+                GetKeyDisplayText(Row2IconId),
+                Row2Text));
+
+        TutorialRow2Text->SetVisibility(
+            ESlateVisibility::HitTestInvisible);
+    }
 }
 
 void UDITutorialPromptWidgetBase::SetTutorialProgress(const FText& InProgressText)

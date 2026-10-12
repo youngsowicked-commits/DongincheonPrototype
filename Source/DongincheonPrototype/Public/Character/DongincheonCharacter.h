@@ -664,6 +664,13 @@ protected:
 	float PreGrabWalkSpeed = 0.0f;
 	bool bGrabWalkSpeedOverridden = false;
 	
+	// Grab 중 Camera / Character 회전 분리
+	bool bGrabRotationOverridden = false;
+
+	bool bPreGrabUseControllerRotationYaw = false;
+	bool bPreGrabOrientRotationToMovement = false;
+	bool bPreGrabUseControllerDesiredRotation = false;
+	
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> ActiveDeathMontage;
 	

@@ -89,6 +89,14 @@ void ADongincheonCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	UpdateAttackAssistMove(DeltaTime);
+	
+	// Grab Holding 중 정지 / 이동 Animation 전환
+	if (IsValid(GrabComponent) &&
+		GrabComponent->IsHoldingGrab() &&
+		IsValid(GrabComponent->GetGrabbedActor()))
+	{
+		PlayPlayerGrabHold();
+	}
 
 	HeatActionAvailabilityCheckElapsed += DeltaTime;
 
@@ -2062,28 +2070,58 @@ void ADongincheonCharacter::HandleGrabStartMontageEnded(UAnimMontage* Montage, b
 
 void ADongincheonCharacter::PlayPlayerGrabHold()
 {
-	if (!IsValid(GrabComponent) || !GrabComponent->IsHoldingGrab() || !IsValid(GetMesh()) || !IsValid(
-		GrabConfig.GrabHoldMontage))
+	if (!IsValid(GrabComponent) ||
+		!GrabComponent->IsHoldingGrab() ||
+		!IsValid(GetMesh()))
 	{
 		return;
 	}
 
-	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	UAnimInstance* Anim = GetMesh()->GetAnimInstance();
 
-	if (!IsValid(AnimInstance))
+	if (!IsValid(Anim))
 	{
 		return;
 	}
 
-	const float SafePlayRate = GrabConfig.GrabPlayRate > 0.0f ? GrabConfig.GrabPlayRate : 1.0f;
-	const float MontageResult = AnimInstance->Montage_Play(GrabConfig.GrabHoldMontage, SafePlayRate);
+	const UCharacterMovementComponent* Movement =
+		GetCharacterMovement();
 
-	if (MontageResult <= 0.0f)
+	const bool bMoving =
+		!CachedMoveInput.IsNearlyZero(0.1f) &&
+		IsValid(Movement) &&
+		Movement->Velocity.SizeSquared2D() > FMath::Square(15.0f);
+
+	UAnimMontage* DesiredMontage =
+		bMoving && IsValid(GrabConfig.GrabWalkMontage)
+		? GrabConfig.GrabWalkMontage.Get()
+		: GrabConfig.GrabHoldMontage.Get();
+
+	if (!IsValid(DesiredMontage))
 	{
 		return;
 	}
 
-	ActiveGrabHoldMontage = GrabConfig.GrabHoldMontage;
+	// 동일한 Montage가 이미 실행 중이라면 재시작 금지
+	if (ActiveGrabHoldMontage == DesiredMontage &&
+		Anim->Montage_IsPlaying(DesiredMontage))
+	{
+		return;
+	}
+
+	StopPlayerGrabHold(0.1f);
+
+	const float PlayRate = FMath::Max(
+		0.01f, GrabConfig.GrabPlayRate);
+
+	const float Result = Anim->Montage_Play(
+		DesiredMontage, PlayRate);
+
+	if (Result > 0.0f)
+	{
+		// 기존 변수를 현재 Grab Locomotion Montage 추적에 재사용
+		ActiveGrabHoldMontage = DesiredMontage;
+	}
 }
 
 void ADongincheonCharacter::StopPlayerGrabHold(float BlendOutTime)
@@ -2339,6 +2377,44 @@ void ADongincheonCharacter::HandleGrabStateChanged(EDIGrabState PreviousState, E
 	else if (NewState == EDIGrabState::None || NewState == EDIGrabState::Releasing)
 	{
 		ClearGrabAutoReleaseTimer();
+	}
+	
+	// Grab Holding 진입: 카메라 회전이 Player 방향을 바꾸지 않도록 한다.
+	if (NewState == EDIGrabState::Holding &&
+		!bGrabRotationOverridden)
+	{
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+		{
+			bPreGrabUseControllerRotationYaw = bUseControllerRotationYaw;
+			bPreGrabOrientRotationToMovement =
+				Movement->bOrientRotationToMovement;
+			bPreGrabUseControllerDesiredRotation =
+				Movement->bUseControllerDesiredRotation;
+
+			bGrabRotationOverridden = true;
+
+			bUseControllerRotationYaw = false;
+			Movement->bOrientRotationToMovement = false;
+			Movement->bUseControllerDesiredRotation = false;
+		}
+	}
+
+	// Grab 종료: 기존 회전 설정 복구
+	if (NewState == EDIGrabState::None &&
+		bGrabRotationOverridden)
+	{
+		bUseControllerRotationYaw = bPreGrabUseControllerRotationYaw;
+
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+		{
+			Movement->bOrientRotationToMovement =
+				bPreGrabOrientRotationToMovement;
+
+			Movement->bUseControllerDesiredRotation =
+				bPreGrabUseControllerDesiredRotation;
+		}
+
+		bGrabRotationOverridden = false;
 	}
 	
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())

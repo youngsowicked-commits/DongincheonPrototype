@@ -19,6 +19,17 @@ struct FDIEnemyGrabResponseConfig
 	// BreakFree에 성공했을 때 재생할 Victim 탈출 모션.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grab|Victim")
 	TObjectPtr<UAnimMontage> BreakFreeMontage = nullptr;
+	
+	// Grab Victim Animation
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grab|Animation")
+	TObjectPtr<UAnimMontage> BeingGrabbedHoldMontage = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grab|Animation")
+	TObjectPtr<UAnimMontage> BeingGrabbedHitReactMontage = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grab|Animation",
+		meta = (ClampMin = "0.01"))
+	float BeingGrabbedPlayRate = 1.0f;
 };
 
 USTRUCT(BlueprintType)
@@ -32,6 +43,10 @@ struct FGrabConfig
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grab|Grabber")
 	TObjectPtr<UAnimMontage> GrabHoldMontage = nullptr;
+	
+	// Player가 Enemy를 잡고 이동할 때
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grab|Grabber")
+	TObjectPtr<UAnimMontage> GrabWalkMontage = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grab|Grabber")
 	TObjectPtr<UAnimMontage> GrabAttackMontage = nullptr;

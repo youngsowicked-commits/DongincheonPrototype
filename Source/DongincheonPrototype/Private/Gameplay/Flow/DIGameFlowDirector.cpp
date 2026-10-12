@@ -28,9 +28,12 @@ void ADIGameFlowDirector::BeginPlay()
 		DisableEncounterTrigger(Encounter);
 	}
 
-	// Main Encounter
-	BindEncounter(MainEncounter);
-	DisableEncounterTrigger(MainEncounter);
+	// Main Encounters
+	for (ADIBattleEncounter* Encounter : MainEncounters)
+	{
+		BindEncounter(Encounter);
+		DisableEncounterTrigger(Encounter);
+	}
 
 	// Boss Encounter
 	BindEncounter(BossEncounter);
@@ -118,17 +121,41 @@ void ADIGameFlowDirector::SetPhase(EDIGameFlowPhase NewPhase)
 		break;
 
 	case EDIGameFlowPhase::MainEncounter:
-		OnMainEncounterStarted();
+		{
+			CurrentMainEncounterIndex = 0;
+			OnMainEncounterStarted();
 
-		if (IsValid(MainEncounter))
-		{
-			MainEncounter->SetEncounterTriggerEnabled(true);
+			// 기존 플레이어 조작 복구 코드 유지
+			if (ADongincheonCharacter* Player =
+				Cast<ADongincheonCharacter>(
+					UGameplayStatics::GetPlayerCharacter(this, 0)))
+			{
+				Player->SetPresentationInputLocked(false);
+				Player->SetCombatInputEnabled(true);
+
+				UE_LOG(LogDIGameFlow, Warning,
+					TEXT("MAIN READY | InputLocked=%d | MoveAllowed=%d"),
+					Player->IsGameplayInputLocked(),
+					Player->IsMovementInputAllowed());
+			}
+
+			if (!MainEncounters.IsValidIndex(CurrentMainEncounterIndex) ||
+				!IsValid(MainEncounters[CurrentMainEncounterIndex]))
+			{
+				UE_LOG(LogDIGameFlow, Error,
+					TEXT("MAIN ENCOUNTER | First encounter missing (Index=0)"));
+				break;
+			}
+
+			MainEncounters[CurrentMainEncounterIndex]
+				->SetEncounterTriggerEnabled(true);
+
+			UE_LOG(LogDIGameFlow, Log,
+				TEXT("MAIN ENCOUNTER | Trigger Enabled | Index=%d"),
+				CurrentMainEncounterIndex);
+
+			break;
 		}
-		else
-		{
-			SetPhase(EDIGameFlowPhase::BossEncounter);
-		}
-		break;
 
 	case EDIGameFlowPhase::BossEncounter:
 		OnBossEncounterStarted();
@@ -423,16 +450,7 @@ void ADIGameFlowDirector::StartCurrentTutorialEncounter()
 		return;
 	}
 
-	if (CurrentTutorialIndex == 1)
-	{
-		// Tutorial 02: Trigger 없이 적 4명 전투 즉시 시작
-		Encounter->StartEncounterFromFlow();
-	}
-	else
-	{
-		// Tutorial 01: 기존 Trigger로 적 2명 전투 시작
-		Encounter->SetEncounterTriggerEnabled(true);
-	}
+	Encounter->SetEncounterTriggerEnabled(true);
 
 	UE_LOG(
 		LogDIGameFlow,
@@ -1179,10 +1197,37 @@ void ADIGameFlowDirector::HandleEncounterCompleted(ADIBattleEncounter* Encounter
 
 	case EDIGameFlowPhase::MainEncounter:
 		{
-			if (Encounter == MainEncounter)
+			if (!MainEncounters.IsValidIndex(CurrentMainEncounterIndex) ||
+				MainEncounters[CurrentMainEncounterIndex].Get() != Encounter)
 			{
-				SetPhase(
-					EDIGameFlowPhase::BossEncounter);
+				break;
+			}
+
+			const int32 NextIndex = CurrentMainEncounterIndex + 1;
+
+			if (MainEncounters.IsValidIndex(NextIndex))
+			{
+				ADIBattleEncounter* NextEncounter =
+					MainEncounters[NextIndex].Get();
+
+				if (!IsValid(NextEncounter))
+				{
+					UE_LOG(LogDIGameFlow, Error,
+						TEXT("MAIN ENCOUNTER | Encounter missing at Index=%d"),
+						NextIndex);
+					break;
+				}
+
+				CurrentMainEncounterIndex = NextIndex;
+				NextEncounter->SetEncounterTriggerEnabled(true);
+
+				UE_LOG(LogDIGameFlow, Log,
+					TEXT("MAIN ENCOUNTER | Next Trigger Enabled | Index=%d"),
+					CurrentMainEncounterIndex);
+			}
+			else
+			{
+				SetPhase(EDIGameFlowPhase::BossEncounter);
 			}
 
 			break;

@@ -143,6 +143,10 @@ protected:
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Flow")
 	bool bAutoStartCombat = true;
 	
+	// Encounter 완료 시 탐색 모드로 복귀할지 결정
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly,Category = "Battle|Completion")
+	bool bReturnToExplorationOnComplete = true;
+	
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Battle|Flow")
 	bool bKeepPlayerInCombatAfterCompletion = false;
 	

@@ -714,7 +714,10 @@ void ADongincheonEnemyBase::BeginPlay()
 	if (GrabComponent)
 	{
 		GrabComponent->OnGrabStateChanged.AddUniqueDynamic(this, &ADongincheonEnemyBase::HandleGrabStateChanged);
+		GrabComponent->OnGrabAttackReceived.AddUniqueDynamic(this, &ADongincheonEnemyBase::HandleGrabAttackReceived);
 	}
+	
+	
 
 	if (HeatActionComponent)
 	{
@@ -902,12 +905,17 @@ void ADongincheonEnemyBase::HandleGrabStateChanged(EDIGrabState PreviousState, E
 			AIController->SendGrabbedEvent();
 		}
 
+		// 실제 Grab 상태 진입 후 Enemy 전용 Hold 재생
+		PlayEnemyGrabHold();
+
 		return;
 	}
 
 	// Grab Victim 이탈
 	if (PreviousState == EDIGrabState::BeingGrabbed)
 	{
+		StopEnemyGrabMontages(0.1f);
+		
 		// BreakFree로 발생한 Release는 일반 Grab 종료로 처리하지 않는다.
 		// ResolveGrabPolicyAfterGrabStarted()가 ForceRelease 완료 후 값을 정리한다.
 		if (bGrabBreakFreeActive)
@@ -932,6 +940,198 @@ void ADongincheonEnemyBase::HandleGrabStateChanged(EDIGrabState PreviousState, E
 			AIController->SendGrabReleasedEvent();
 		}
 	}
+}
+
+
+void ADongincheonEnemyBase::PlayEnemyGrabHold()
+{
+	if (!IsValid(EnemyDefinition) ||
+		!IsValid(GrabComponent) ||
+		!GrabComponent->IsBeingGrabbed() ||
+		bGrabBreakFreeActive ||
+		!IsValid(GetMesh()) ||
+		(IsValid(HealthComponent) && HealthComponent->IsDead()) ||
+		(IsValid(HeatActionComponent) && HeatActionComponent->IsBeingVictim()) ||
+		IsValid(ActiveEnemyGrabHitReactMontage))
+	{
+		return;
+	}
+
+	UAnimMontage* HoldMontage =
+		EnemyDefinition->GrabResponse.BeingGrabbedHoldMontage.Get();
+
+	if (!IsValid(HoldMontage))
+	{
+		return;
+	}
+
+	UAnimInstance* Anim = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(Anim))
+	{
+		return;
+	}
+
+	if (ActiveEnemyGrabHoldMontage == HoldMontage &&
+		Anim->Montage_IsPlaying(HoldMontage))
+	{
+		return;
+	}
+
+	const float PlayRate = FMath::Max(
+		0.01f,
+		EnemyDefinition->GrabResponse.BeingGrabbedPlayRate);
+
+	const float Result = Anim->Montage_Play(
+		HoldMontage,
+		PlayRate);
+
+	if (Result > 0.0f)
+	{
+		ActiveEnemyGrabHoldMontage = HoldMontage;
+	}
+}
+
+
+
+void ADongincheonEnemyBase::HandleGrabAttackReceived(
+    float Damage,
+    AActor* DamageCauser)
+{
+    if (Damage <= 0.0f ||
+        !IsValid(DamageCauser) ||
+        !IsValid(GrabComponent) ||
+        !GrabComponent->IsBeingGrabbed() ||
+        (IsValid(HealthComponent) && HealthComponent->IsDead()))
+    {
+        return;
+    }
+
+    PlayEnemyGrabHitReact();
+}
+
+
+
+void ADongincheonEnemyBase::PlayEnemyGrabHitReact()
+{
+	if (!IsValid(EnemyDefinition) ||
+		!IsValid(GrabComponent) ||
+		!GrabComponent->IsBeingGrabbed() ||
+		bGrabBreakFreeActive ||
+		!IsValid(GetMesh()) ||
+		(IsValid(HealthComponent) && HealthComponent->IsDead()) ||
+		(IsValid(HeatActionComponent) && HeatActionComponent->IsBeingVictim()))
+	{
+		return;
+	}
+
+	UAnimMontage* HitReactMontage =
+		EnemyDefinition->GrabResponse.BeingGrabbedHitReactMontage.Get();
+
+	if (!IsValid(HitReactMontage))
+	{
+		return;
+	}
+
+	UAnimInstance* Anim = GetMesh()->GetAnimInstance();
+
+	if (!IsValid(Anim))
+	{
+		return;
+	}
+
+	if (IsValid(ActiveEnemyGrabHitReactMontage) &&
+		Anim->Montage_IsPlaying(ActiveEnemyGrabHitReactMontage))
+	{
+		return;
+	}
+
+	if (IsValid(ActiveEnemyGrabHoldMontage))
+	{
+		UAnimMontage* Hold = ActiveEnemyGrabHoldMontage;
+		ActiveEnemyGrabHoldMontage = nullptr;
+
+		Anim->Montage_Stop(0.05f, Hold);
+	}
+
+	const float PlayRate = FMath::Max(
+		0.01f,
+		EnemyDefinition->GrabResponse.BeingGrabbedPlayRate);
+
+	const float Result = Anim->Montage_Play(
+		HitReactMontage,
+		PlayRate);
+
+	if (Result <= 0.0f)
+	{
+		PlayEnemyGrabHold();
+		return;
+	}
+
+	ActiveEnemyGrabHitReactMontage = HitReactMontage;
+
+	FOnMontageEnded EndDelegate;
+	EndDelegate.BindUObject(
+		this,
+		&ADongincheonEnemyBase::HandleEnemyGrabHitReactEnded);
+
+	Anim->Montage_SetEndDelegate(
+		EndDelegate,
+		ActiveEnemyGrabHitReactMontage);
+}
+
+
+
+void ADongincheonEnemyBase::HandleEnemyGrabHitReactEnded(
+    UAnimMontage* Montage,
+    bool bInterrupted)
+{
+    (void)bInterrupted;
+
+    if (Montage != ActiveEnemyGrabHitReactMontage)
+    {
+        return;
+    }
+
+    ActiveEnemyGrabHitReactMontage = nullptr;
+
+    // 아직 잡혀 있다면 Hold로 복귀
+    PlayEnemyGrabHold();
+}
+
+
+void ADongincheonEnemyBase::StopEnemyGrabMontages(
+    float BlendOutTime)
+{
+    UAnimMontage* Hold = ActiveEnemyGrabHoldMontage;
+    UAnimMontage* HitReact = ActiveEnemyGrabHitReactMontage;
+
+    // 종료 Callback에서 Hold를 다시 재생하지 못하도록 먼저 초기화
+    ActiveEnemyGrabHoldMontage = nullptr;
+    ActiveEnemyGrabHitReactMontage = nullptr;
+
+    if (!IsValid(GetMesh()))
+    {
+        return;
+    }
+
+    UAnimInstance* Anim = GetMesh()->GetAnimInstance();
+    if (!IsValid(Anim))
+    {
+        return;
+    }
+
+    if (IsValid(HitReact))
+    {
+        FOnMontageEnded EmptyDelegate;
+        Anim->Montage_SetEndDelegate(EmptyDelegate, HitReact);
+        Anim->Montage_Stop(BlendOutTime, HitReact);
+    }
+
+    if (IsValid(Hold))
+    {
+        Anim->Montage_Stop(BlendOutTime, Hold);
+    }
 }
 
 void ADongincheonEnemyBase::ResolveGrabPolicyAfterGrabStarted()
@@ -1085,6 +1285,8 @@ void ADongincheonEnemyBase::HandleHeatActionStateChanged(EDIHeatActionState Prev
 	// Heat Action Victim 진입.
 	if (NewState == EDIHeatActionState::BeingVictim)
 	{
+		StopEnemyGrabMontages(0.05f);
+		
 		if (IsValid(AIController))
 		{
 			AIController->StopMovement();
@@ -1140,6 +1342,7 @@ void ADongincheonEnemyBase::HandleHeatActionStateChanged(EDIHeatActionState Prev
 				AIController->SendGrabbedEvent();
 			}
 
+			PlayEnemyGrabHold();
 			return;
 		}
 

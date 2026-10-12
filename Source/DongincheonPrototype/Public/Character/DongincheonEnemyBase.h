@@ -150,6 +150,23 @@ protected:
 	void HandleGrabStateChanged(EDIGrabState PreviousState,EDIGrabState NewState);
 	
 	UFUNCTION()
+	void HandleGrabAttackReceived(float Damage, AActor* DamageCauser);
+
+	void PlayEnemyGrabHold();
+	void PlayEnemyGrabHitReact();
+	void StopEnemyGrabMontages(float BlendOutTime = 0.1f);
+
+	void HandleEnemyGrabHitReactEnded(
+		UAnimMontage* Montage,
+		bool bInterrupted);
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveEnemyGrabHoldMontage = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveEnemyGrabHitReactMontage = nullptr;
+	
+	UFUNCTION()
 	void HandleHeatActionStateChanged(EDIHeatActionState PreviousState,EDIHeatActionState NewState);
 	
 	UFUNCTION(BlueprintImplementableEvent, Category = "Enemy|Presentation")
