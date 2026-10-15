@@ -2,6 +2,9 @@
 
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "LevelSequenceActor.h"
+#include "MovieSceneObjectBindingID.h"
+#include "TimerManager.h"
 #include "LevelSequence.h"
 
 ADIQTECinematicFlowActor::ADIQTECinematicFlowActor()
@@ -58,12 +61,112 @@ void ADIQTECinematicFlowActor::UnlockQTECameraLook()
 	UE_LOG(LogTemp, Log, TEXT("[QTE CAMERA] LOOK UNLOCKED"));
 }
 
-void ADIQTECinematicFlowActor::EndPlay(
-	const EEndPlayReason::Type EndPlayReason)
+void ADIQTECinematicFlowActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	EndQTESlowMotion();
+	
 	UnlockQTECameraLook();
 
 	Super::EndPlay(EndPlayReason);
+}
+
+bool ADIQTECinematicFlowActor::SetQTECinematicActors(
+	AActor* InPlayer, AActor* InBoss)
+{
+	if (!IsValid(InPlayer) ||
+		!IsValid(InBoss) ||
+		InPlayer == InBoss)
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[QTE] Invalid Player/Boss binding"));
+		return false;
+	}
+
+	QTEPlayerActor = InPlayer;
+	QTEBossActor = InBoss;
+
+	return true;
+}
+
+bool ADIQTECinematicFlowActor::PrepareSequenceActor(
+	ALevelSequenceActor* InSequenceActor,
+	ULevelSequence* InSequence)
+{
+	if (!IsValid(InSequenceActor) || !IsValid(InSequence))
+	{
+		return false;
+	}
+
+	// 메인 Setup Sequence는 QTE Runtime Binding 대상이 아니다.
+	// 태그 조회 자체를 하지 않고 그대로 재생한다.
+	if (InSequence == Sequence.Get())
+	{
+		return true;
+	}
+
+	const FName PlayerTag(TEXT("QTE_Player"));
+	const FName BossTag(TEXT("QTE_Boss"));
+
+	const bool bHasPlayerTag =
+		InSequenceActor->FindNamedBinding(PlayerTag).IsValid();
+
+	const bool bHasBossTag =
+		InSequenceActor->FindNamedBinding(BossTag).IsValid();
+
+	// 각 QTE 연출 Sequence에는 두 바인딩이 필수.
+	if (!bHasPlayerTag || !bHasBossTag ||
+		!QTEPlayerActor.IsValid() ||
+		!QTEBossActor.IsValid())
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[QTE] Missing actor or binding tag: %s"),
+			*GetNameSafe(InSequence));
+		return false;
+	}
+
+	TArray<AActor*> PlayerActors;
+	PlayerActors.Add(QTEPlayerActor.Get());
+
+	TArray<AActor*> BossActors;
+	BossActors.Add(QTEBossActor.Get());
+	
+	UE_LOG(LogTemp, Warning,
+	TEXT("[QTE_DEBUG] BINDING | Sequence=%s | Player=%s | Boss=%s"),
+	*GetNameSafe(InSequence),
+	*GetNameSafe(QTEPlayerActor.Get()),
+	*GetNameSafe(QTEBossActor.Get()));
+
+	InSequenceActor->SetBindingByTag(
+		PlayerTag, PlayerActors, false);
+
+	InSequenceActor->SetBindingByTag(
+		BossTag, BossActors, false);
+	
+	const FName FlowTag(TEXT("QTE_Flow"));
+
+	if (!InSequenceActor->FindNamedBinding(FlowTag).IsValid())
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[QTE] Missing QTE_Flow tag: %s"),
+			*GetNameSafe(InSequence));
+
+		return false;
+	}
+
+	TArray<AActor*> FlowActors;
+	FlowActors.Add(this);
+
+	InSequenceActor->SetBindingByTag(
+		FlowTag,
+		FlowActors,
+		false);
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[QTE_DEBUG] FLOW BOUND | Actor=%s | Sequence=%s"),
+		*GetName(),
+		*GetNameSafe(InSequence));
+
+	return true;
 }
 
 void ADIQTECinematicFlowActor::StartQTECinematicFlow()
@@ -151,48 +254,144 @@ void ADIQTECinematicFlowActor::StartQTECinematicFlow()
 	BeginCurrentStep();
 }
 
-void ADIQTECinematicFlowActor::NotifyQTEResolved(FName StepId,bool bSucceeded)
+void ADIQTECinematicFlowActor::NotifyQTEResolved(
+	FName StepId, bool bSucceeded)
 {
-	const FDIQTECinematicStep* CurrentStep = GetCurrentStep();
+	const FDIQTECinematicStep* Step = GetCurrentStep();
 
-	if (!CurrentStep)
+	if (!Step ||
+		Step->StepId != StepId ||
+		!bQTEWindowOpened ||
+		bQTEBranchReached ||
+		bCurrentQTEResolved)
 	{
 		return;
 	}
 
-	if (CurrentStep->StepId != StepId)
-	{
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT(
-				"[DIQTECinematicFlowActor] Received result for wrong StepId. "
-				"Expected '%s', received '%s'."
-			),
-			*CurrentStep->StepId.ToString(),
-			*StepId.ToString()
-		);
-
-		return;
-	}
-
-	if (bCurrentQTEResolved)
-	{
-		return;
-	}
-
-	if (FlowState != EDIQTECinematicFlowState::PlayingQTESequence && FlowState != EDIQTECinematicFlowState::WaitingForQTEResult)
-	{
-		return;
-	}
-
+	// 판정 결과만 저장한다.
+	// 실제 애니메이션 전환은 QTE_Branch 키에서 수행한다.
 	bCurrentQTEResolved = true;
 	bCurrentQTESucceeded = bSucceeded;
 
-	if (bCurrentQTESequenceFinished)
-	{
-		PlayCurrentResultSequence();
-	}
+	UE_LOG(LogTemp, Log,
+		TEXT("[QTE] Resolved: %s | Success=%d"),
+		*StepId.ToString(), bSucceeded);
+}
+
+void ADIQTECinematicFlowActor::HandleQTEWindowStart()
+{
+	UE_LOG(LogTemp, Warning,
+	TEXT("[QTE_DEBUG] WINDOW EVENT RECEIVED | Step=%s | State=%d"),
+	*GetCurrentQTEStepId().ToString(),
+	static_cast<int32>(FlowState));
+	
+    if (FlowState != EDIQTECinematicFlowState::PlayingResult ||
+        bQTEWindowOpened || bQTEBranchReached)
+    {
+        return;
+    }
+
+    const FDIQTECinematicStep* Step = GetCurrentStep();
+
+    if (!Step)
+    {
+        return;
+    }
+
+    bQTEWindowOpened = true;
+
+    SetActiveSequencePlayRate(QTESlowPlayRate);
+
+    // 기존 Boss Encounter가 QTEComponent와 HUD를 시작
+    OnQTERequested.Broadcast(Step->StepId);
+
+    UE_LOG(LogTemp, Log,
+        TEXT("[QTE] Window START: %s"),
+        *Step->StepId.ToString());
+}
+
+void ADIQTECinematicFlowActor::HandleQTEBranch()
+{
+	UE_LOG(LogTemp, Warning,
+	TEXT("[QTE_DEBUG] BRANCH EVENT RECEIVED | Step=%s"),
+	*GetCurrentQTEStepId().ToString());
+	
+    if (FlowState != EDIQTECinematicFlowState::PlayingResult ||
+        !bQTEWindowOpened || bQTEBranchReached)
+    {
+        return;
+    }
+
+    // 입력이 없었다면 기존 Encounter의 QTE를 실패 처리하도록 요청
+    if (!bCurrentQTEResolved)
+    {
+        OnQTEBranchDeadline.Broadcast();
+    }
+
+    // Blueprint 연결이 빠진 경우를 로그로 드러낸다.
+    if (!bCurrentQTEResolved)
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("[QTE] Deadline did not resolve QTE. Check BP binding."));
+
+        bCurrentQTEResolved = true;
+        bCurrentQTESucceeded = false;
+    }
+
+    bQTEBranchReached = true;
+
+    PendingFailStartSeconds = GetActiveSequenceTimeSeconds();
+
+    // 분기 이후 원래 재생 속도로 복귀
+    SetActiveSequencePlayRate(1.0f);
+
+    if (bCurrentQTESucceeded)
+    {
+        UE_LOG(LogTemp, Log,
+            TEXT("[QTE] SUCCESS - Continue Success Sequence"));
+        return;
+    }
+
+    // Sequence 평가 중 Stop/교체하지 않고 다음 Tick으로 연기
+    bPendingFailSwitch = true;
+
+    GetWorldTimerManager().SetTimerForNextTick(
+        FTimerDelegate::CreateUObject(
+            this,
+            &ADIQTECinematicFlowActor::ExecuteFailTransition));
+}
+
+void ADIQTECinematicFlowActor::ExecuteFailTransition()
+{
+    const FDIQTECinematicStep* Step = GetCurrentStep();
+
+    if (!bPendingFailSwitch || !Step)
+    {
+        return;
+    }
+
+    bPendingFailSwitch = false;
+
+    if (!IsValid(Step->FailSequence))
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("[QTE] Missing Fail Sequence: %s"),
+            *Step->StepId.ToString());
+
+        CompleteFlow();
+        return;
+    }
+
+    UE_LOG(LogTemp, Log,
+        TEXT("[QTE] FAIL - Switch at %.3f seconds"),
+        PendingFailStartSeconds);
+
+    if (!ReplaceActiveSequenceAtTime(
+        Step->FailSequence,
+        PendingFailStartSeconds))
+    {
+        CompleteFlow();
+    }
 }
 
 EDIQTECinematicFlowState ADIQTECinematicFlowActor::GetQTECinematicFlowState() const
@@ -215,41 +414,37 @@ void ADIQTECinematicFlowActor::HandleSequenceSegmentFinished()
 		BeginCurrentStep();
 		break;
 
-	case EDIQTECinematicFlowState::PlayingQTESequence:
-		bCurrentQTESequenceFinished = true;
-
-		if (bCurrentQTEResolved)
-		{
-			PlayCurrentResultSequence();
-		}
-		else
-		{
-			FlowState = EDIQTECinematicFlowState::WaitingForQTEResult;
-		}
-		break;
-
 	case EDIQTECinematicFlowState::PlayingResult:
+		if (bPendingFailSwitch)
+		{
+			return;
+		}
+
+		if (!bQTEBranchReached)
+		{
+			UE_LOG(LogTemp, Error,
+				TEXT("[QTE] Sequence ended before QTE_Branch event"));
+
+			CompleteFlow();
+			return;
+		}
+
 		AdvanceToNextStep();
 		break;
 
 	default:
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT(
-				"[DIQTECinematicFlowActor] Sequence finished in unexpected state: %d"
-			),
-			static_cast<int32>(FlowState)
-		);
+		UE_LOG(LogTemp, Warning,
+			TEXT("[QTE] Unexpected flow state: %d"),
+			static_cast<int32>(FlowState));
 		break;
 	}
 }
 
 void ADIQTECinematicFlowActor::BeginCurrentStep()
 {
-	const FDIQTECinematicStep* CurrentStep = GetCurrentStep();
+	const FDIQTECinematicStep* Step = GetCurrentStep();
 
-	if (!CurrentStep)
+	if (!Step)
 	{
 		CompleteFlow();
 		return;
@@ -259,22 +454,29 @@ void ADIQTECinematicFlowActor::BeginCurrentStep()
 	bCurrentQTESucceeded = false;
 	bCurrentQTESequenceFinished = false;
 
-	if (IsValid(CurrentStep->QTESequence))
+	bQTEWindowOpened = false;
+	bQTEBranchReached = false;
+	bPendingFailSwitch = false;
+
+	if (!IsValid(Step->SuccessSequence))
 	{
-		FlowState = EDIQTECinematicFlowState::PlayingQTESequence;
+		UE_LOG(LogTemp, Error,
+			TEXT("[QTE] Missing Success Sequence: %s"),
+			*Step->StepId.ToString());
 
-		PlaySequenceAsset(CurrentStep->QTESequence);
-
-		bCurrentQTESequenceFinished = !IsPlayingCinematic();
+		CompleteFlow();
+		return;
 	}
-	else
+
+	FlowState = EDIQTECinematicFlowState::PlayingResult;
+
+	// Success를 기본 애니메이션으로 처음부터 재생
+	PlaySequenceAsset(Step->SuccessSequence);
+
+	if (!IsPlayingCinematic())
 	{
-		bCurrentQTESequenceFinished = true;
-
-		FlowState = EDIQTECinematicFlowState::WaitingForQTEResult;
+		CompleteFlow();
 	}
-
-	OnQTERequested.Broadcast(CurrentStep->StepId);
 }
 
 void ADIQTECinematicFlowActor::PlayCurrentResultSequence()
@@ -321,6 +523,8 @@ void ADIQTECinematicFlowActor::AdvanceToNextStep()
 
 void ADIQTECinematicFlowActor::CompleteFlow()
 {
+	EndQTESlowMotion();
+	
 	FlowState = EDIQTECinematicFlowState::Completed;
 
 	CurrentStepIndex = INDEX_NONE;
@@ -328,6 +532,9 @@ void ADIQTECinematicFlowActor::CompleteFlow()
 	bCurrentQTEResolved = false;
 	bCurrentQTESucceeded = false;
 	bCurrentQTESequenceFinished = false;
+	bQTEWindowOpened = false;
+	bQTEBranchReached = false;
+	bPendingFailSwitch = false;
 
 	// 전체 QTE Flow 완료 시 Camera Look 복구
 	UnlockQTECameraLook();
@@ -344,4 +551,36 @@ const FDIQTECinematicStep* ADIQTECinematicFlowActor::GetCurrentStep() const
 	}
 
 	return &Steps[CurrentStepIndex];
+}
+
+void ADIQTECinematicFlowActor::BeginQTESlowMotion()
+{
+	if (bSlowMotionApplied || !IsValid(GetWorld()))
+	{
+		return;
+	}
+
+	PreviousGlobalTimeDilation =
+		UGameplayStatics::GetGlobalTimeDilation(this);
+
+	UGameplayStatics::SetGlobalTimeDilation(
+		this, QTEInputTimeDilation);
+
+	bSlowMotionApplied = true;
+}
+
+void ADIQTECinematicFlowActor::EndQTESlowMotion()
+{
+	if (!bSlowMotionApplied)
+	{
+		return;
+	}
+
+	if (IsValid(GetWorld()))
+	{
+		UGameplayStatics::SetGlobalTimeDilation(
+			this, PreviousGlobalTimeDilation);
+	}
+
+	bSlowMotionApplied = false;
 }

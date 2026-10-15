@@ -96,6 +96,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle|QTE")
 	void CancelEncounterQTE();
 	
+	UFUNCTION(BlueprintPure, Category = "Battle|Cinematic")
+	ADongincheonEnemyBase* GetCinematicEnemy() const;
+	
 	UFUNCTION(BlueprintPure, Category = "Battle")
 	int32 GetAliveCount() const {return AliveCount;}
 	

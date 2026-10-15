@@ -7,6 +7,12 @@
 #include "Character/DongincheonEnemyBase.h"
 #include "AI/Data/DIEnemyDefinition.h"
 #include "UI/Widgets/DIHUDRootWidget.h"
+#include "UI/Widgets/DIGameMenuWidget.h"
+#include "Engine/GameInstance.h"
+#include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "InputCoreTypes.h"
+#include "TimerManager.h"
 
 namespace
 {
@@ -38,6 +44,123 @@ namespace
     }
 }
 
+void ADIPlayerController::SetupInputComponent()
+{
+    Super::SetupInputComponent();
+    if (InputComponent)
+    {
+        FInputKeyBinding& PauseBinding = InputComponent->BindKey(
+            EKeys::Escape, IE_Pressed, this, &ADIPlayerController::TogglePauseMenu);
+        PauseBinding.bExecuteWhenPaused = true;
+    }
+}
+
+void ADIPlayerController::TogglePauseMenu()
+{
+    if (GameMenuWidget)
+    {
+        if (GameMenuWidget->GetMode() == EDIGameMenuMode::Pause) ResumeFromMenu();
+        return;
+    }
+    if (bMenuTravelPending || UGameplayStatics::IsGamePaused(this)) return;
+    if (PlayerMenuHealth.IsValid() && PlayerMenuHealth->IsDead()) return;
+    ShowGameMenu(EDIGameMenuMode::Pause);
+}
+
+void ADIPlayerController::ShowGameMenu(EDIGameMenuMode Mode)
+{
+    if (!IsLocalController() || bMenuTravelPending) return;
+    if (GameMenuWidget)
+    {
+        // Death supersedes an already open menu without forgetting the original pause state.
+        if (Mode != EDIGameMenuMode::GameOver) return;
+        GameMenuWidget->RemoveFromParent();
+        GameMenuWidget = nullptr;
+    }
+    else
+    {
+        bMenuWasPaused = UGameplayStatics::IsGamePaused(this);
+        bMenuHadCursor = bShowMouseCursor;
+    }
+    GameMenuWidget = CreateWidget<UDIGameMenuWidget>(this, UDIGameMenuWidget::StaticClass());
+    if (!GameMenuWidget) return;
+    GameMenuWidget->Configure(Mode);
+    GameMenuWidget->AddToViewport(10000);
+    SetPause(true);
+    bShowMouseCursor = true;
+    FInputModeUIOnly UI;
+    UI.SetWidgetToFocus(GameMenuWidget->TakeWidget());
+    UI.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    SetInputMode(UI);
+    GameMenuWidget->FocusPrimaryAction();
+    UE_LOG(LogTemp, Log, TEXT("FINAL_MENU | Open | Mode=%d"), static_cast<int32>(Mode));
+}
+
+void ADIPlayerController::ResumeFromMenu()
+{
+    if (!GameMenuWidget || bMenuTravelPending ||
+        GameMenuWidget->GetMode() == EDIGameMenuMode::GameOver) return;
+    GameMenuWidget->RemoveFromParent();
+    GameMenuWidget = nullptr;
+    SetPause(bMenuWasPaused);
+    bShowMouseCursor = bMenuHadCursor;
+    SetInputMode(FInputModeGameOnly());
+    // Existing Intro/QTE/presentation input locks are deliberately left intact.
+    UE_LOG(LogTemp, Log, TEXT("FINAL_MENU | Resume | CinematicLocked=%d"), bCinematicControlLocked);
+}
+
+void ADIPlayerController::RestartFromMenu()
+{
+    if (!GameMenuWidget || bMenuTravelPending) return;
+    const FString Map = UGameplayStatics::GetCurrentLevelName(this, true);
+    if (Map.IsEmpty()) return;
+    bMenuTravelPending = true;
+    GetWorldTimerManager().ClearTimer(GameOverMenuTimer);
+    GameMenuWidget->RemoveFromParent();
+    GameMenuWidget = nullptr;
+    SetPause(false);
+    SetInputMode(FInputModeGameOnly());
+    bShowMouseCursor = false;
+    UE_LOG(LogTemp, Log, TEXT("FINAL_MENU | Restart | Map=%s"), *Map);
+    UGameplayStatics::OpenLevel(this, FName(*Map));
+}
+
+void ADIPlayerController::QuitFromMenu()
+{
+    UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
+}
+
+void ADIPlayerController::BindPlayerDeathMenu()
+{
+    UnbindPlayerDeathMenu();
+    if (APawn* Controlled = GetPawn())
+    {
+        PlayerMenuHealth = Controlled->FindComponentByClass<UHealthComponent>();
+        if (PlayerMenuHealth.IsValid())
+            PlayerMenuHealth->OnDeath.AddUniqueDynamic(this, &ADIPlayerController::HandlePlayerMenuDeath);
+    }
+}
+
+void ADIPlayerController::UnbindPlayerDeathMenu()
+{
+    GetWorldTimerManager().ClearTimer(GameOverMenuTimer);
+    if (PlayerMenuHealth.IsValid())
+        PlayerMenuHealth->OnDeath.RemoveDynamic(this, &ADIPlayerController::HandlePlayerMenuDeath);
+    PlayerMenuHealth.Reset();
+}
+
+void ADIPlayerController::HandlePlayerMenuDeath(AActor* DamageCauser)
+{
+    if (bMenuTravelPending || GetWorldTimerManager().IsTimerActive(GameOverMenuTimer)) return;
+    // Existing death montage runs first; no new combat or death implementation.
+    GetWorldTimerManager().SetTimer(GameOverMenuTimer, this, &ADIPlayerController::ShowGameOverMenu, 2.0f, false);
+}
+
+void ADIPlayerController::ShowGameOverMenu()
+{
+    if (PlayerMenuHealth.IsValid() && PlayerMenuHealth->IsDead()) ShowGameMenu(EDIGameMenuMode::GameOver);
+}
+
 void ADIPlayerController::SetCinematicControlLocked(bool bLocked)
 {
     if (bCinematicControlLocked == bLocked)
@@ -66,6 +189,19 @@ void ADIPlayerController::BeginPlay()
     Super::BeginPlay();
 
     CreateHUD();
+    BindPlayerDeathMenu();
+
+    // Keep the existing Night map and its Intro; title pauses it before gameplay ticks.
+    // Remember the GameInstance so retry does not show the initial title again.
+    static TSet<TWeakObjectPtr<UGameInstance>> TitleShownInstances;
+    UGameInstance* Instance = GetGameInstance();
+    if (IsLocalController() && GetWorld()->WorldType != EWorldType::PIE &&
+        GetWorld()->GetMapName().EndsWith(TEXT("L_Station_P2_Integration_Night")) &&
+        !TitleShownInstances.Contains(Instance))
+    {
+        TitleShownInstances.Add(Instance);
+        ShowGameMenu(EDIGameMenuMode::Title);
+    }
 }
 
 void ADIPlayerController::OnPossess(APawn* InPawn)
@@ -77,6 +213,7 @@ void ADIPlayerController::OnPossess(APawn* InPawn)
     BindTargetingToHUD();
 
     BindHeatActionAvailability(Cast<ADongincheonCharacter>(InPawn));
+    BindPlayerDeathMenu();
 
     if (bCinematicControlLocked)
     {
@@ -89,6 +226,7 @@ void ADIPlayerController::OnPossess(APawn* InPawn)
 
 void ADIPlayerController::OnUnPossess()
 {
+    UnbindPlayerDeathMenu();
     UnbindHeatActionAvailability();
 
     Super::OnUnPossess();
@@ -447,9 +585,10 @@ void ADIPlayerController::ShowEnemyHUD(AActor* EnemyActor)
         EnemyHUDHealthSource->OnDeath.AddUniqueDynamic(this,&ADIPlayerController::HandleEnemyHUDTargetDeath);
     }
 
-    const FText DisplayName = ResolveCombatantDisplayName(
-    EnemyActor,
-    NSLOCTEXT("DongincheonHUD", "UnknownEnemy", "적"));
+    // Ordinary enemy HUD uses stable actor suffixes; boss identity stays unchanged.
+    const int32 EnemyIndex = FMath::Max(0, EnemyActor->GetFName().GetNumber() - 1);
+    const FText DisplayName = FText::FromString(
+        FString::Printf(TEXT("적 %c"), static_cast<TCHAR>(TEXT('A') + EnemyIndex % 26)));
 
     HUDRootWidget->SetEnemyDisplayName(DisplayName);
     HUDRootWidget->SetEnemyHealthSource(EnemyHealthComponent);

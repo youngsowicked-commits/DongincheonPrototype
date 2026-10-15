@@ -1,0 +1,19 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "Dongincheon Production Tools",
+  "Description": "Read-only building, asset, animation, and Sequencer validation tools for the Unreal Editor.",
+  "Category": "Editor",
+  "CreatedBy": "Dongincheon Phase 2",
+  "CanContainContent": true,
+  "EnabledByDefault": false,
+  "IsBetaVersion": true,
+  "IsExperimentalVersion": true,
+  "Installed": false,
+  "Plugins": [
+    {"Name": "PythonScriptPlugin", "Enabled": true},
+    {"Name": "EditorScriptingUtilities", "Enabled": true},
+    {"Name": "SequencerScripting", "Enabled": true}
+  ]
+}

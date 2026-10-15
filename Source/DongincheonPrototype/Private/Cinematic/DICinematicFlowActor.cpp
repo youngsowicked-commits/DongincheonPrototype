@@ -56,6 +56,26 @@ void ADICinematicFlowActor::PlaySequenceAsset(ULevelSequence* InSequence)
 
 		return;
 	}
+	
+	if (!IsValid(SequenceActor) ||
+	!PrepareSequenceActor(SequenceActor, InSequence))
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("[CINEMATIC] Sequence preparation failed: %s"),
+			*GetNameSafe(InSequence)
+		);
+
+		if (IsValid(SequenceActor))
+		{
+			SequenceActor->Destroy();
+		}
+
+		SequenceActor = nullptr;
+		SequencePlayer = nullptr;
+		return;
+	}
 
 	SequencePlayer->OnFinished.AddUniqueDynamic(this,&ADICinematicFlowActor::HandleSequenceFinished);
 
@@ -67,6 +87,13 @@ void ADICinematicFlowActor::PlaySequenceAsset(ULevelSequence* InSequence)
 	}
 
 	SequencePlayer->Play();
+}
+
+bool ADICinematicFlowActor::PrepareSequenceActor(
+	ALevelSequenceActor* InSequenceActor,
+	ULevelSequence* InSequence)
+{
+	return true;
 }
 
 bool ADICinematicFlowActor::IsPlayingCinematic() const
@@ -144,4 +171,60 @@ void ADICinematicFlowActor::ExitCinematicPresentation()
 
 	PlayerController->SetCinematicControlLocked(false);
 	PlayerController->SetHUDContext(EDIHUDContext::Gameplay);
+}
+
+void ADICinematicFlowActor::SetActiveSequencePlayRate(float NewRate)
+{
+	if (IsValid(SequencePlayer))
+	{
+		SequencePlayer->SetPlayRate(FMath::Max(0.01f, NewRate));
+	}
+}
+
+float ADICinematicFlowActor::GetActiveSequenceTimeSeconds() const
+{
+	return IsValid(SequencePlayer)
+		? static_cast<float>(SequencePlayer->GetCurrentTime().AsSeconds())
+		: 0.0f;
+}
+
+bool ADICinematicFlowActor::ReplaceActiveSequenceAtTime(
+	ULevelSequence* NewSequence,
+	float StartSeconds)
+{
+	if (!IsValid(NewSequence))
+	{
+		return false;
+	}
+
+	if (IsValid(SequencePlayer))
+	{
+		SequencePlayer->OnFinished.RemoveDynamic(
+			this, &ADICinematicFlowActor::HandleSequenceFinished);
+
+		SequencePlayer->StopAtCurrentTime();
+	}
+
+	if (IsValid(SequenceActor))
+	{
+		SequenceActor->Destroy();
+	}
+
+	SequencePlayer = nullptr;
+	SequenceActor = nullptr;
+	bIsPlayingCinematic = false;
+
+	PlaySequenceAsset(NewSequence);
+
+	if (!IsValid(SequencePlayer) || !bIsPlayingCinematic)
+	{
+		return false;
+	}
+
+	SequencePlayer->SetPlaybackPosition(
+		FMovieSceneSequencePlaybackParams(
+			FMath::Max(0.0f, StartSeconds),
+			EUpdatePositionMethod::Jump));
+
+	return true;
 }

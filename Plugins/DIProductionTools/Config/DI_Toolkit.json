@@ -1,0 +1,21 @@
+{
+  "building_name_pattern": "(?:^|[^A-Za-z0-9])(?:L|R|C)\\d{2}(?:$|[^A-Za-z0-9])|(?:^|[^A-Za-z0-9])S01(?:$|[^A-Za-z0-9])",
+  "building_actor_tag": "DI_Building",
+  "ground_actor_tag": "DI_Ground",
+  "ground_name_keywords": ["road", "street", "ground", "junction", "landscape", "asphalt", "pavement", "sidewalk", "terrain"],
+  "placeholder_name_keywords": ["placeholder", "whitebox", "blockout", "temp_box", "cube_temp"],
+  "ignore_actor_name_keywords": ["billboard", "previewactor"],
+  "max_asset_scan_count": 1000,
+  "ground_trace_up_cm": 30.0,
+  "ground_trace_down_cm": 300.0,
+  "ground_footprint_fraction": 0.60,
+  "ground_floating_warn_cm": 12.0,
+  "ground_penetration_warn_cm": 20.0,
+  "check_collision_info": true,
+  "warn_qte_root_motion_disabled_when_root_moves": false,
+  "qte_name_keywords": ["qte", "heataction"],
+  "cinematic_name_keywords": ["intro", "ending", "boss", "qte", "cinematic", "cutscene"],
+  "cinematic_required_binding_keywords": [],
+  "warn_no_camera_cut": true,
+  "root_track_candidates": ["root", "Root", "ROOT", "root_bind", "Root_M"]
+}

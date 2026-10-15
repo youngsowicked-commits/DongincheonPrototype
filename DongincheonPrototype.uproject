@@ -69,6 +69,10 @@
 			"SupportedTargetPlatforms": [
 				"Win64"
 			]
+		},
+		{
+			"Name": "DIProductionTools",
+			"Enabled": true
 		}
 	]
 }

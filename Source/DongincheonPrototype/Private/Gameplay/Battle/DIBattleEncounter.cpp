@@ -751,6 +751,55 @@ void ADIBattleEncounter::CancelEncounterQTE()
 	QTEComponent->CancelQTE();
 }
 
+ADongincheonEnemyBase* ADIBattleEncounter::GetCinematicEnemy() const
+{
+	ADongincheonEnemyBase* Result = nullptr;
+
+	auto ConsiderEnemy = [&Result](ADongincheonEnemyBase* Enemy) -> bool
+	{
+		if (!IsValid(Enemy))
+		{
+			return true;
+		}
+
+		// 서로 다른 유효한 Enemy가 둘 이상이면
+		// 어느 캐릭터를 연출할지 임의로 결정하지 않는다.
+		if (Result && Result != Enemy)
+		{
+			return false;
+		}
+
+		Result = Enemy;
+		return true;
+	};
+
+	for (const TObjectPtr<ADongincheonEnemyBase>& Enemy : SpawnedEnemies)
+	{
+		if (!ConsiderEnemy(Enemy.Get()))
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[CINEMATIC] Multiple enemies in encounter: %s"),
+				*GetName());
+
+			return nullptr;
+		}
+	}
+
+	for (const TObjectPtr<ADongincheonEnemyBase>& Enemy : PlacedEnemies)
+	{
+		if (!ConsiderEnemy(Enemy.Get()))
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[CINEMATIC] Multiple enemies in encounter: %s"),
+				*GetName());
+
+			return nullptr;
+		}
+	}
+
+	return Result;
+}
+
 void ADIBattleEncounter::PreparePlacedEnemies()
 {
 	for (ADongincheonEnemyBase* Enemy : PlacedEnemies)

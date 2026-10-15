@@ -42,6 +42,13 @@ protected:
 
 	virtual void HandleSequenceSegmentFinished();
 	
+	virtual bool PrepareSequenceActor(ALevelSequenceActor* InSequenceActor,ULevelSequence* InSequence);
+	
+	void SetActiveSequencePlayRate(float NewRate);
+	float GetActiveSequenceTimeSeconds() const;
+
+	bool ReplaceActiveSequenceAtTime(ULevelSequence* NewSequence,float StartSeconds);
+
 private:
 	UFUNCTION()
 	void HandleSequenceFinished();

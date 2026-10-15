@@ -12,6 +12,8 @@ class UDIHeatActionComponent;
 class UQTEComponent;
 class UTargetingComponent;
 class ADongincheonCharacter;
+class UDIGameMenuWidget;
+enum class EDIGameMenuMode : uint8;
 
 UCLASS()
 class DONGINCHEONPROTOTYPE_API ADIPlayerController : public APlayerController
@@ -19,6 +21,9 @@ class DONGINCHEONPROTOTYPE_API ADIPlayerController : public APlayerController
 	GENERATED_BODY()
 
 public:
+    void ResumeFromMenu();
+    void RestartFromMenu();
+    void QuitFromMenu();
 	UFUNCTION(BlueprintPure, Category = "HUD")
 	UDIHUDRootWidget* GetHUDRootWidget() const;
 	
@@ -90,11 +95,24 @@ public:
 	void ClearBossHUD();
 
 protected:
+    virtual void SetupInputComponent() override;
 	virtual void BeginPlay() override;
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void OnUnPossess() override;
 
 private:
+    void TogglePauseMenu();
+    void ShowGameMenu(EDIGameMenuMode Mode);
+    void BindPlayerDeathMenu();
+    void UnbindPlayerDeathMenu();
+    void ShowGameOverMenu();
+    UFUNCTION() void HandlePlayerMenuDeath(AActor* DamageCauser);
+    UPROPERTY(Transient) TObjectPtr<UDIGameMenuWidget> GameMenuWidget;
+    TWeakObjectPtr<UHealthComponent> PlayerMenuHealth;
+    FTimerHandle GameOverMenuTimer;
+    bool bMenuWasPaused = false;
+    bool bMenuHadCursor = false;
+    bool bMenuTravelPending = false;
 	UPROPERTY(EditDefaultsOnly, Category = "HUD")
 	TSubclassOf<UDIHUDRootWidget> HUDRootWidgetClass;
 	

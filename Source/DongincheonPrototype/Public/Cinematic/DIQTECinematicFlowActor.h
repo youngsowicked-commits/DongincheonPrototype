@@ -13,6 +13,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	StepId
 );
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(
+	FDIQTEBranchDeadlineSignature);
+
 UCLASS()
 class DONGINCHEONPROTOTYPE_API ADIQTECinematicFlowActor
 	: public ADICinematicFlowActor
@@ -36,14 +39,30 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "QTE|Cinematic")
 	FDIQTERequestedSignature OnQTERequested;
+	
+	UFUNCTION(BlueprintCallable, Category = "QTE|Cinematic")
+	bool SetQTECinematicActors(AActor* InPlayer, AActor* InBoss);
+	
+	UFUNCTION(BlueprintCallable, Category = "QTE|Cinematic|Timing")
+	void HandleQTEWindowStart();
+
+	UFUNCTION(BlueprintCallable, Category = "QTE|Cinematic|Timing")
+	void HandleQTEBranch();
+
+	UPROPERTY(BlueprintAssignable, Category = "QTE|Cinematic|Timing")
+	FDIQTEBranchDeadlineSignature OnQTEBranchDeadline;
 
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 	virtual void HandleSequenceSegmentFinished() override;
-
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "QTE|Cinematic")
 	TArray<FDIQTECinematicStep> Steps;
+	
+	virtual bool PrepareSequenceActor(
+	ALevelSequenceActor* InSequenceActor,
+	ULevelSequence* InSequence) override;
 
 private:
 	void LockQTECameraLook();
@@ -74,4 +93,29 @@ private:
 
 	UPROPERTY(Transient)
 	bool bCurrentQTESequenceFinished = false;
+	
+	TWeakObjectPtr<AActor> QTEPlayerActor;
+	TWeakObjectPtr<AActor> QTEBossActor;
+
+	void BeginQTESlowMotion();
+	void EndQTESlowMotion();
+
+	UPROPERTY(EditAnywhere, Category = "QTE|Cinematic|Slow Motion",
+		meta = (ClampMin = "0.01", ClampMax = "1.0"))
+	float QTEInputTimeDilation = 0.35f;
+
+	float PreviousGlobalTimeDilation = 1.0f;
+	bool bSlowMotionApplied = false;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "QTE|Cinematic|Timing",
+	meta = (ClampMin = "0.1", ClampMax = "1.0"))
+	float QTESlowPlayRate = 0.35f;
+
+	bool bQTEWindowOpened = false;
+	bool bQTEBranchReached = false;
+	bool bPendingFailSwitch = false;
+
+	float PendingFailStartSeconds = 0.0f;
+
+	void ExecuteFailTransition();
 };
